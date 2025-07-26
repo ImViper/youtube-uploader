@@ -6,6 +6,6 @@ export { default as ReportGeneration } from './ReportGeneration';
 
 // 以下组件已被删除，因为它们没有被使用:
 // - PerformanceCharts
-// - RealtimePerformanceCharts  
+// - RealtimePerformanceCharts
 // - NetworkDiskCharts
 // - SystemHealthIndicators

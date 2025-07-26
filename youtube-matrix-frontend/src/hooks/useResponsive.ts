@@ -1,10 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  breakpoints,
-  getCurrentBreakpoint,
-  matchesMediaQuery,
-  deviceInfo,
-} from '@/utils/responsive/breakpoints';
+import { breakpoints, getCurrentBreakpoint, deviceInfo } from '@/utils/responsive/breakpoints';
 import type { Breakpoint } from '@/utils/responsive/breakpoints';
 
 /**

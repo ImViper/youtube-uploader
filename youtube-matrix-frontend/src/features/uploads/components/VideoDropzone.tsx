@@ -130,7 +130,7 @@ const VideoDropzone: React.FC<VideoDropzoneProps> = ({
       onFilesChange(newFileList);
 
       message.success(`${file.name} 添加成功`);
-    } catch (error) {
+    } catch {
       message.error('文件处理失败');
     } finally {
       setValidating(false);

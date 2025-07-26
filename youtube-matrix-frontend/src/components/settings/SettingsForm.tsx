@@ -27,7 +27,6 @@ import {
   CloudServerOutlined,
   RocketOutlined,
   BellOutlined,
-  ExperimentOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAppSelector, useAppDispatch } from '@/hooks/redux';
@@ -76,7 +75,7 @@ const SettingsForm: React.FC = () => {
       dispatch(updateSettings(values));
       message.success(t('settings.savedSuccessfully'));
       setHasChanges(false);
-    } catch (error) {
+    } catch {
       message.error(t('settings.saveFailed'));
     }
   };
@@ -101,7 +100,7 @@ const SettingsForm: React.FC = () => {
           await refetch();
           message.success(t('settings.defaultsRestored'));
           setHasChanges(false);
-        } catch (error) {
+        } catch {
           message.error(t('settings.restoreDefaultsFailed'));
         }
       },

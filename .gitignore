@@ -71,6 +71,8 @@ typings/
 # dotenv environment variables file
 .env
 .env.test
+.env.local
+.env.*.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -111,5 +113,44 @@ test
 
 # IDE
 .idea
+.vscode
+*.swp
+*.swo
+
+# Test files
+test-*.bat
+test-*.sh
+*.test.md
+jest.config.*.js
+
+# Temporary files
 thumbnail.jpg
+thumbnail.png
 script.js
+*.mp4
+*.tmp
+*.temp
+
+# Build directories
+test-build/
+coverage/
+
+# Logs
+logs/
+*.log
+
+# Database files
+*.db
+*.sqlite
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+
+# Diagnostic reports
+*-diagnostic-report.txt
+*-report.txt

@@ -28,7 +28,7 @@ export class RedisConnection {
   constructor(config?: RedisConfig) {
     const redisOptions: RedisOptions = {
       host: config?.host || process.env.REDIS_HOST || 'localhost',
-      port: config?.port || parseInt(process.env.REDIS_PORT || '6379'),
+      port: config?.port || parseInt(process.env.REDIS_PORT || '5988'),
       password: config?.password || process.env.REDIS_PASSWORD,
       db: config?.db || parseInt(process.env.REDIS_DB || '0'),
       keyPrefix: config?.keyPrefix || 'youtube-uploader:',

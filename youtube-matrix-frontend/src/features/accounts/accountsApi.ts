@@ -15,6 +15,7 @@ interface CreateAccountRequest {
   username: string;
   email: string;
   password: string;
+  browserWindowName?: string;
   proxy?: {
     host: string;
     port: number;
@@ -155,21 +156,17 @@ export const useExportAccountsMutation = () => {
   const [trigger, result] = useLazyExportAccountsQuery();
 
   const exportAccounts = async (params: { format: 'csv' | 'json'; includePasswords?: boolean }) => {
-    try {
-      const response = await trigger({ format: params.format }).unwrap();
-      // 创建下载链接
-      const url = URL.createObjectURL(response);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `accounts.${params.format}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      return { data: response };
-    } catch (error) {
-      throw error;
-    }
+    const response = await trigger({ format: params.format }).unwrap();
+    // 创建下载链接
+    const url = URL.createObjectURL(response);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `accounts.${params.format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return { data: response };
   };
 
   return [exportAccounts, result] as const;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, Select, Space, Button, Tooltip, Row, Col, Spin, Alert } from 'antd';
 import {
   ReloadOutlined,
@@ -26,7 +26,7 @@ const { Option } = Select;
 const PerformanceDashboard: React.FC = () => {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [_isFullscreen, _setIsFullscreen] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const timeRange = useAppSelector(selectTimeRange);
@@ -45,7 +45,7 @@ const PerformanceDashboard: React.FC = () => {
 
   // Handle time range change
   const handleTimeRangeChange = (value: string) => {
-    dispatch(setTimeRange(value as any));
+    dispatch(setTimeRange(value as '1h' | '6h' | '24h' | '7d' | '30d'));
   };
 
   // Handle refresh interval change

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { getDatabase } from './connection';
 import path from 'path';
 import pino from 'pino';

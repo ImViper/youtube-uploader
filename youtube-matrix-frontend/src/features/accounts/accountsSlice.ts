@@ -10,6 +10,9 @@ export interface Account extends BaseEntity {
   lastActive: string | null;
   uploadsCount: number;
   successRate: number;
+  browserWindowName?: string;
+  browserWindowId?: string;
+  isWindowLoggedIn?: boolean;
   proxy?: {
     host: string;
     port: number;

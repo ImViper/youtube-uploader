@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { getDatabase } from '../database/connection';
 import { getRedis } from '../redis/connection';
+import { getWebSocketManager } from '../api/websocket';
 import pino from 'pino';
 import { getErrorMessage } from '../utils/error-utils';
 
@@ -140,6 +141,27 @@ export class MetricsCollector extends EventEmitter {
       logger.debug({ duration }, 'Metrics collection completed');
       
       this.emit('collected', metrics);
+      
+      // Emit system metrics via WebSocket
+      const wsManager = getWebSocketManager();
+      if (wsManager) {
+        wsManager.emitSystemMetrics({
+          cpuUsage: metrics.resources.cpuUsage,
+          memoryUsage: metrics.resources.memoryUsage,
+          activeUploads: metrics.queue.depth,
+          queuedUploads: metrics.uploads.total24h - metrics.uploads.successful24h - metrics.uploads.failed24h,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Emit queue status
+        wsManager.emitQueueStatus({
+          waiting: metrics.queue.depth,
+          active: metrics.browsers.active,
+          completed: metrics.uploads.successful24h,
+          failed: metrics.uploads.failed24h,
+          timestamp: new Date().toISOString()
+        });
+      }
 
     } catch (error) {
       logger.error({ error }, 'Failed to collect metrics');
@@ -479,6 +501,44 @@ export class MetricsCollector extends EventEmitter {
       );
     } catch (error) {
       logger.error({ metric, error }, 'Failed to record custom metric');
+    }
+  }
+
+  /**
+   * Get historical metrics
+   */
+  async getHistoricalMetrics(timeRange: string): Promise<any[]> {
+    try {
+      let interval = '1 hour';
+      switch (timeRange) {
+        case '1h':
+          interval = '1 hour';
+          break;
+        case '24h':
+          interval = '24 hours';
+          break;
+        case '7d':
+          interval = '7 days';
+          break;
+        default:
+          interval = timeRange;
+      }
+
+      const result = await this.db.query(
+        `SELECT * FROM metrics_history 
+         WHERE timestamp > CURRENT_TIMESTAMP - INTERVAL $1
+         AND metric_type = 'system'
+         ORDER BY timestamp DESC`,
+        [interval]
+      );
+
+      return result.rows.map(row => ({
+        ...JSON.parse(row.metric_data),
+        timestamp: row.timestamp
+      }));
+    } catch (error) {
+      logger.error({ error }, 'Failed to get historical metrics');
+      return [];
     }
   }
 }

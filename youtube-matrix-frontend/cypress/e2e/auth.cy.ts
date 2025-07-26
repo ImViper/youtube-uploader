@@ -82,7 +82,7 @@ describe('Authentication E2E Tests', () => {
 
       // Check localStorage has token
       cy.window().then((win) => {
-        expect(win.localStorage.getItem('authToken')).to.exist;
+        expect(win.localStorage.getItem('authToken')).to.exist();
       });
     });
   });
@@ -105,7 +105,7 @@ describe('Authentication E2E Tests', () => {
 
     // Token should be removed
     cy.window().then((win) => {
-      expect(win.localStorage.getItem('authToken')).to.not.exist;
+      expect(win.localStorage.getItem('authToken')).to.not.exist();
     });
   });
 

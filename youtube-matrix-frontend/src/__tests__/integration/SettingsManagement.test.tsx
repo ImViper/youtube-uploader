@@ -66,7 +66,7 @@ afterAll(() => server.close());
 const SettingsComponent: React.FC = () => {
   const { data: settings } = settingsApi.useGetSettingsQuery();
   const [updateSettings] = settingsApi.useUpdateSettingsMutation();
-  
+
   const handleUpdate = async () => {
     await updateSettings({
       system: {
@@ -75,9 +75,9 @@ const SettingsComponent: React.FC = () => {
       },
     });
   };
-  
+
   if (!settings) return <div>Loading...</div>;
-  
+
   return (
     <div>
       <div>Language: {settings.system.language}</div>
@@ -90,7 +90,7 @@ const SettingsComponent: React.FC = () => {
 describe('Settings Management', () => {
   it('displays current settings', async () => {
     renderWithProviders(<SettingsComponent />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Language: en')).toBeInTheDocument();
       expect(screen.getByText('Privacy: private')).toBeInTheDocument();
@@ -99,14 +99,14 @@ describe('Settings Management', () => {
 
   it('updates settings', async () => {
     renderWithProviders(<SettingsComponent />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Update Language')).toBeInTheDocument();
     });
-    
+
     const updateButton = screen.getByText('Update Language');
     await userEvent.click(updateButton);
-    
+
     await waitFor(() => {
       expect(settingsApi.endpoints.updateSettings.matchFulfilled).toBeTruthy();
     });

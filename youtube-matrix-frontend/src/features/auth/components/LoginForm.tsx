@@ -21,7 +21,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
         onSuccess();
       }
     } catch (err: any) {
-      setError(err?.data?.message || 'Login failed. Please try again.');
+      setError(err?.data?.error || err?.data?.message || 'Login failed. Please try again.');
     }
   };
 

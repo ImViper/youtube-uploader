@@ -7,6 +7,7 @@ import {
   UserOutlined,
   MailOutlined,
   LockOutlined,
+  WindowsOutlined,
 } from '@ant-design/icons';
 import type { Account } from '../accountsSlice';
 
@@ -22,6 +23,7 @@ export interface AccountFormValues {
   username: string;
   email: string;
   password: string;
+  browserWindowName?: string;
   proxy?: {
     host: string;
     port: number;
@@ -51,6 +53,7 @@ const AccountFormModal: React.FC<AccountFormModalProps> = ({
           username: account.username,
           email: account.email,
           password: '', // 安全起见，不显示密码
+          browserWindowName: account.browserWindowName,
           proxy: account.proxy,
           cookies: account.cookies,
           notes: account.notes,
@@ -166,6 +169,17 @@ const AccountFormModal: React.FC<AccountFormModalProps> = ({
             prefix={<LockOutlined />}
             placeholder={account ? '留空保持原密码' : '请输入密码'}
             iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="browserWindowName"
+          label="比特浏览器窗口名称"
+          extra="请输入在比特浏览器中创建并已登录YouTube的窗口名称"
+        >
+          <Input 
+            prefix={<WindowsOutlined />} 
+            placeholder="例如: YouTube账号1" 
           />
         </Form.Item>
 

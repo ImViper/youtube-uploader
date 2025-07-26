@@ -19,14 +19,14 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    open: true,
+    open: false, // 禁用自动打开浏览器
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5989',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'ws://localhost:3000',
+        target: 'ws://localhost:5989',
         ws: true,
         changeOrigin: true,
       },

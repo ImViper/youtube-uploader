@@ -64,7 +64,13 @@ export class QueueManager extends EventEmitter {
       ...config
     };
 
-    const connection = this.redis.getClient();
+    // BullMQ requires a Redis connection without keyPrefix
+    // Create a new connection specifically for BullMQ
+    const connection = {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '5988'),
+      password: process.env.REDIS_PASSWORD
+    };
 
     // Create queue with configuration
     this.uploadQueue = new Queue<UploadTask>(queueName, {
@@ -80,8 +86,14 @@ export class QueueManager extends EventEmitter {
       }
     });
 
-    // Create queue events for monitoring
-    this.queueEvents = new QueueEvents(queueName, { connection });
+    // Create queue events for monitoring with same connection config
+    this.queueEvents = new QueueEvents(queueName, { 
+      connection: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '5988'),
+        password: process.env.REDIS_PASSWORD
+      }
+    });
     
     // Note: QueueScheduler has been removed in BullMQ v5
     // Delayed jobs are now handled automatically by the Queue

@@ -22,7 +22,7 @@ const ConfigSchema = z.object({
   database: z.object({
     connectionString: z.string().optional(),
     host: z.string().default('localhost'),
-    port: z.number().default(5432),
+    port: z.number().default(5987),
     database: z.string().default('youtube_uploader'),
     user: z.string().default('postgres'),
     password: z.string().optional(),
@@ -35,7 +35,7 @@ const ConfigSchema = z.object({
   redis: z.object({
     url: z.string().optional(),
     host: z.string().default('localhost'),
-    port: z.number().default(6379),
+    port: z.number().default(5988),
     password: z.string().optional(),
     db: z.number().default(0),
     keyPrefix: z.string().default('youtube:'),

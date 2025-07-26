@@ -10,31 +10,29 @@ import 'whatwg-fetch';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-i18n
-  .use(initReactI18next)
-  .init({
-    lng: 'en',
-    fallbackLng: 'en',
-    ns: ['translation'],
-    defaultNS: 'translation',
-    resources: {
-      en: {
-        translation: {
-          mobile: {
-            refreshing: 'Refreshing...',
-            releaseToRefresh: 'Release to refresh',
-            pullToRefresh: 'Pull to refresh',
-          },
-          errorTracking: {
-            fetchFailed: 'Failed to fetch errors',
-          },
+i18n.use(initReactI18next).init({
+  lng: 'en',
+  fallbackLng: 'en',
+  ns: ['translation'],
+  defaultNS: 'translation',
+  resources: {
+    en: {
+      translation: {
+        mobile: {
+          refreshing: 'Refreshing...',
+          releaseToRefresh: 'Release to refresh',
+          pullToRefresh: 'Pull to refresh',
+        },
+        errorTracking: {
+          fetchFailed: 'Failed to fetch errors',
         },
       },
     },
-    interpolation: {
-      escapeValue: false,
-    },
-  });
+  },
+  interpolation: {
+    escapeValue: false,
+  },
+});
 
 // Add TextEncoder/TextDecoder if not available
 if (typeof global !== 'undefined' && !global.TextEncoder) {
@@ -55,13 +53,15 @@ if (typeof global !== 'undefined') {
   // @ts-ignore
   global.ReadableStream = global.ReadableStream || class ReadableStream {};
   // @ts-ignore
-  global.BroadcastChannel = global.BroadcastChannel || class BroadcastChannel {
-    constructor() {}
-    postMessage() {}
-    close() {}
-    addEventListener() {}
-    removeEventListener() {}
-  };
+  global.BroadcastChannel =
+    global.BroadcastChannel ||
+    class BroadcastChannel {
+      constructor() {}
+      postMessage() {}
+      close() {}
+      addEventListener() {}
+      removeEventListener() {}
+    };
 }
 
 // Import MSW server after polyfills

@@ -6,6 +6,7 @@ import { AccountSelector } from '../accounts/selector';
 import { AccountManager } from '../accounts/manager';
 import { upload as originalUpload } from '../upload';
 import { getDatabase } from '../database/connection';
+import { getWebSocketManager } from '../api/websocket';
 import pino from 'pino';
 import { Browser } from 'puppeteer';
 
@@ -97,6 +98,19 @@ export class UploadWorker {
     try {
       // Update job progress
       await job.updateProgress({ status: 'acquiring_account', progress: 10 });
+      
+      // Emit WebSocket event for task progress
+      const wsManager = getWebSocketManager();
+      if (wsManager) {
+        wsManager.emitUploadProgress({
+          taskId,
+          accountId: requestedAccountId || '',
+          videoTitle: video.title || 'Untitled',
+          progress: 10,
+          stage: 'acquiring_account',
+          timestamp: new Date().toISOString()
+        });
+      }
 
       // Select account (may be different from requested if that one is unavailable)
       accountProfile = requestedAccountId 
@@ -265,22 +279,80 @@ export class UploadWorker {
    * Setup event handlers
    */
   private setupEventHandlers(): void {
-    this.worker.on('completed', (job, result) => {
+    this.worker.on('completed', async (job, result) => {
       logger.info({ 
         jobId: job.id, 
         result 
       }, 'Job completed');
+      
+      // Emit WebSocket event for completion
+      const wsManager = getWebSocketManager();
+      if (wsManager && job.data) {
+        wsManager.emitUploadComplete({
+          taskId: job.data.id,
+          accountId: result.accountId || job.data.accountId || '',
+          videoId: result.videoId || '',
+          videoTitle: job.data.video.title || 'Untitled',
+          videoUrl: result.videoId ? `https://youtube.com/watch?v=${result.videoId}` : '',
+          timestamp: new Date().toISOString()
+        });
+        
+        // Update task status
+        wsManager.emitTaskStatusChange({
+          taskId: job.data.id,
+          accountId: job.data.accountId || '',
+          videoTitle: job.data.video.title || 'Untitled',
+          oldStatus: 'processing',
+          newStatus: 'completed',
+          timestamp: new Date().toISOString()
+        });
+      }
     });
 
-    this.worker.on('failed', (job, error) => {
+    this.worker.on('failed', async (job, error) => {
       logger.error({ 
         jobId: job?.id, 
         error: error.message 
       }, 'Job failed');
+      
+      // Emit WebSocket event for failure
+      const wsManager = getWebSocketManager();
+      if (wsManager && job?.data) {
+        wsManager.emitUploadError({
+          taskId: job.data.id,
+          accountId: job.data.accountId || '',
+          videoTitle: job.data.video.title || 'Untitled',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Update task status
+        wsManager.emitTaskStatusChange({
+          taskId: job.data.id,
+          accountId: job.data.accountId || '',
+          videoTitle: job.data.video.title || 'Untitled',
+          oldStatus: 'processing',
+          newStatus: 'failed',
+          timestamp: new Date().toISOString()
+        });
+      }
     });
 
-    this.worker.on('active', (job) => {
+    this.worker.on('active', async (job) => {
       logger.debug({ jobId: job.id }, 'Job started');
+      
+      // Emit WebSocket event for job start
+      const wsManager = getWebSocketManager();
+      if (wsManager && job.data) {
+        wsManager.emitTaskStatusChange({
+          taskId: job.data.id,
+          accountId: job.data.accountId || '',
+          videoTitle: job.data.video.title || 'Untitled',
+          oldStatus: 'queued',
+          newStatus: 'processing',
+          timestamp: new Date().toISOString()
+        });
+      }
     });
 
     this.worker.on('stalled', (jobId) => {

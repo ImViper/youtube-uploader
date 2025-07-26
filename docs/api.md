@@ -1,505 +1,624 @@
-# YouTube Matrix Upload API Documentation
+# YouTube Matrix API 文档
 
-## Overview
+## 概述
 
-The YouTube Matrix Upload API provides RESTful endpoints for managing multiple YouTube accounts, browser profiles, and automated video uploads using a distributed queue system.
+YouTube Matrix 提供了完整的 RESTful API，用于管理多个 YouTube 账户、任务队列和自动化视频上传。系统支持账户管理、批量上传、实时监控等企业级功能。
 
-## Base URL
+## 基础信息
 
+### 基础 URL
 ```
-http://localhost:3000/api
-```
-
-## Authentication
-
-When API authentication is enabled (`security.enableApiAuth: true`), all requests must include an API key:
-
-```
-Authorization: Bearer YOUR_API_KEY
+http://localhost:5989/api
 ```
 
-## Rate Limiting
+### API 版本
+- **当前版本**: v1
+- **版本化路径**: `/api/v1/*`
 
-Default rate limits:
-- 100 requests per 15 minutes per IP
-- Can be configured via `api.rateLimit` settings
+## 认证
 
-## Endpoints
+### JWT Token 认证
 
-### Health & Status
+所有 API 请求（除了认证端点）都需要在请求头中包含有效的 JWT Token：
 
-#### GET /health
-Check system health status.
+```
+Authorization: Bearer YOUR_JWT_TOKEN
+```
 
-**Response:**
+### 获取 Token
+
+#### 登录
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "your_password"
+}
+```
+
+**响应示例**：
 ```json
 {
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "user": {
+      "id": "1",
+      "username": "admin",
+      "role": "admin"
+    }
+  }
+}
+```
+
+#### 刷新 Token
+```http
+POST /api/auth/refresh
+Authorization: Bearer YOUR_REFRESH_TOKEN
+```
+
+### 用户角色
+
+系统支持三种角色权限：
+- **admin**: 完全访问权限
+- **operator**: 操作权限（无系统配置权限）
+- **viewer**: 只读权限
+
+## 核心 API 端点
+
+### 1. 系统状态
+
+#### 健康检查
+```http
+GET /api/v1/health
+```
+
+**响应**：
+```json
+{
+  "success": true,
   "status": "healthy",
-  "timestamp": "2024-01-15T10:30:00Z",
+  "timestamp": "2025-07-26T10:30:00Z",
   "checks": [
     {
       "service": "database",
-      "status": "healthy"
+      "status": "healthy",
+      "message": "PostgreSQL connection OK"
     },
     {
       "service": "redis",
-      "status": "healthy"
+      "status": "healthy",
+      "message": "Redis connection OK"
     },
     {
       "service": "queue",
-      "status": "healthy"
+      "status": "healthy",
+      "message": "Queue system operational"
     }
   ]
 }
 ```
 
-#### GET /status
-Get comprehensive system status.
-
-**Response:**
-```json
-{
-  "queue": {
-    "waiting": 5,
-    "active": 2,
-    "completed": 150,
-    "failed": 3,
-    "delayed": 0,
-    "paused": false
-  },
-  "browserPool": {
-    "total": 5,
-    "available": 3,
-    "busy": 2,
-    "error": 0
-  },
-  "accounts": {
-    "total": 20,
-    "active": 18,
-    "healthy": 15,
-    "suspended": 2
-  },
-  "initialized": true,
-  "timestamp": "2024-01-15T10:30:00Z"
-}
+#### 系统状态
+```http
+GET /api/v1/status
 ```
 
-#### GET /metrics
-Get detailed system metrics.
-
-**Response:**
+**响应**：
 ```json
 {
-  "uploads": {
-    "total24h": 245,
-    "successful24h": 230,
-    "failed24h": 15,
-    "averageDuration": 185000,
-    "throughput": 10.2
-  },
-  "accounts": {
-    "total": 20,
-    "active": 18,
-    "healthy": 15,
-    "suspended": 2,
-    "utilizationRate": 75.5
-  },
-  "browsers": {
-    "total": 5,
-    "active": 2,
-    "idle": 3,
-    "error": 0,
-    "utilizationRate": 40.0
-  },
-  "queue": {
-    "depth": 8,
-    "processingRate": 12.5,
-    "averageWaitTime": 45.2,
-    "backlog": 0
-  },
-  "errors": {
-    "rate24h": 0.625,
-    "byCategory": {
-      "network": 5,
-      "auth": 3,
-      "browser": 7
+  "success": true,
+  "data": {
+    "queue": {
+      "waiting": 15,
+      "active": 3,
+      "completed": 245,
+      "failed": 7
+    },
+    "accounts": {
+      "total": 25,
+      "active": 20,
+      "healthy": 18,
+      "suspended": 2
+    },
+    "performance": {
+      "cpu": 45.2,
+      "memory": 62.8,
+      "uptime": 172800
     }
   }
 }
 ```
 
-### Account Management
+### 2. Matrix 管理
 
-#### GET /accounts
-List all accounts with optional filtering.
+#### 创建 Matrix
+```http
+POST /api/v1/matrices
+Content-Type: application/json
 
-**Query Parameters:**
-- `status` (string): Filter by status (active, limited, suspended, error)
-- `minHealthScore` (number): Minimum health score filter
-- `hasAvailableUploads` (boolean): Filter accounts with available upload quota
-
-**Response:**
-```json
-[
-  {
-    "id": "uuid",
-    "email": "account@example.com",
-    "status": "active",
-    "healthScore": 85,
-    "dailyUploadCount": 3,
-    "dailyUploadLimit": 10,
-    "lastUploadTime": "2024-01-15T09:00:00Z"
+{
+  "name": "生产环境 Matrix",
+  "description": "主要生产上传任务",
+  "config": {
+    "maxConcurrency": 5,
+    "uploadTimeout": 300000,
+    "retryAttempts": 3
   }
-]
+}
 ```
 
-#### POST /accounts
-Add a new account.
+#### 获取 Matrix 列表
+```http
+GET /api/v1/matrices?page=1&pageSize=10
+```
 
-**Request Body:**
+**查询参数**：
+- `page`: 页码（默认：1）
+- `pageSize`: 每页数量（默认：20）
+- `status`: 状态过滤（active/paused/stopped）
+- `sortBy`: 排序字段
+- `sortOrder`: 排序方向（asc/desc）
+
+#### 更新 Matrix
+```http
+PUT /api/v1/matrices/:id
+Content-Type: application/json
+
+{
+  "name": "更新的名称",
+  "config": {
+    "maxConcurrency": 10
+  }
+}
+```
+
+#### 启动/停止 Matrix
+```http
+POST /api/v1/matrices/:id/start
+POST /api/v1/matrices/:id/stop
+```
+
+#### 获取 Matrix 统计
+```http
+GET /api/v1/matrices/:id/stats
+```
+
+### 3. 账户管理
+
+#### 获取账户列表
+```http
+GET /api/v1/accounts?page=1&pageSize=20&status=active
+```
+
+**查询参数**：
+- `status`: 账户状态（active/limited/suspended/error）
+- `minHealthScore`: 最低健康分数
+- `hasAvailableUploads`: 是否有可用上传配额
+- `search`: 搜索关键词
+- `sortBy`: 排序字段
+- `sortOrder`: 排序方向
+
+**响应**：
 ```json
 {
-  "email": "newaccount@example.com",
-  "password": "securepassword",
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "uuid-1234",
+        "username": "channel1",
+        "email": "channel1@example.com",
+        "status": "active",
+        "healthScore": 95,
+        "dailyUploadCount": 3,
+        "dailyUploadLimit": 10,
+        "lastActive": "2025-07-26T08:00:00Z",
+        "createdAt": "2025-01-15T10:00:00Z"
+      }
+    ],
+    "total": 25,
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 2
+  }
+}
+```
+
+#### 添加账户
+```http
+POST /api/v1/accounts
+Content-Type: application/json
+
+{
+  "email": "newchannel@example.com",
+  "password": "secure_password",
   "metadata": {
-    "channel": "My Channel"
+    "channelName": "我的频道",
+    "notes": "主要上传教育内容"
   }
 }
 ```
 
-**Response:**
-```json
+#### 批量导入账户
+```http
+POST /api/v1/accounts/import
+Content-Type: application/json
+
 {
-  "id": "uuid",
-  "email": "newaccount@example.com",
-  "status": "active",
-  "healthScore": 100
+  "format": "csv",
+  "data": "email,password,notes\nchannel1@example.com,pass1,频道1\nchannel2@example.com,pass2,频道2"
 }
 ```
 
-#### PATCH /accounts/:id
-Update account information.
+**支持的格式**：
+- `csv`: CSV 格式
+- `json`: JSON 数组格式
 
-**Request Body:**
-```json
-{
-  "status": "active",
-  "dailyUploadLimit": 15,
-  "metadata": {
-    "notes": "Premium account"
-  }
-}
+#### 导出账户
+```http
+GET /api/v1/accounts/export?format=json&ids=id1,id2
 ```
 
-#### DELETE /accounts/:id
-Remove an account.
-
-#### GET /accounts/stats
-Get aggregate account statistics.
-
-**Response:**
-```json
-{
-  "total": 20,
-  "active": 18,
-  "limited": 0,
-  "suspended": 2,
-  "error": 0,
-  "avg_health": 82.5,
-  "total_uploads_today": 45
-}
+#### 测试账户
+```http
+POST /api/v1/accounts/:id/test
 ```
 
-#### POST /accounts/reset-limits
-Reset daily upload limits for all accounts.
+#### 健康检查
+```http
+POST /api/v1/accounts/:id/health-check
+```
 
-### Upload Management
+#### 重置使用限制
+```http
+POST /api/v1/accounts/:id/reset-limits
+```
 
-#### POST /upload
-Queue a single video upload.
+### 4. 任务管理
 
-**Request Body:**
-```json
+#### 提交上传任务
+```http
+POST /api/v1/tasks
+Content-Type: application/json
+
 {
   "video": {
-    "path": "/path/to/video.mp4",
-    "title": "My Video Title",
-    "description": "Video description",
-    "tags": ["tag1", "tag2"],
+    "path": "/videos/sample.mp4",
+    "title": "视频标题",
+    "description": "视频描述内容",
+    "tags": ["标签1", "标签2"],
+    "category": "Education",
     "privacyStatus": "public",
-    "thumbnail": "/path/to/thumbnail.jpg"
+    "thumbnail": "/thumbnails/sample.jpg"
   },
   "priority": 1,
-  "accountId": "specific-account-uuid",
-  "scheduledAt": "2024-01-16T10:00:00Z",
+  "accountId": "指定账户ID（可选）",
+  "scheduledAt": "2025-07-27T10:00:00Z",
   "metadata": {
-    "campaign": "Winter 2024"
+    "campaign": "夏季推广",
+    "batchId": "batch-001"
   }
 }
 ```
 
-**Response:**
-```json
-{
-  "taskId": "task-uuid",
-  "jobId": "job-id",
-  "status": "queued"
-}
-```
+#### 批量提交任务
+```http
+POST /api/v1/tasks/batch
+Content-Type: application/json
 
-#### POST /upload/batch
-Queue multiple video uploads.
-
-**Request Body:**
-```json
 {
-  "videos": [
+  "tasks": [
     {
-      "path": "/path/to/video1.mp4",
-      "title": "Video 1"
+      "video": {
+        "path": "/videos/video1.mp4",
+        "title": "视频1"
+      }
     },
     {
-      "path": "/path/to/video2.mp4",
-      "title": "Video 2"
+      "video": {
+        "path": "/videos/video2.mp4",
+        "title": "视频2"
+      }
     }
   ],
-  "priority": 0,
-  "metadata": {
-    "batch": "Daily uploads"
+  "commonMetadata": {
+    "campaign": "批量上传"
   }
 }
 ```
 
-**Response:**
-```json
-[
-  {
-    "taskId": "task-uuid-1",
-    "jobId": "job-id-1",
-    "status": "queued"
-  },
-  {
-    "taskId": "task-uuid-2",
-    "jobId": "job-id-2",
-    "status": "queued"
-  }
-]
+#### 获取任务列表
+```http
+GET /api/v1/tasks?status=active&page=1&pageSize=20
 ```
 
-#### GET /tasks/:id
-Get upload task status.
+**查询参数**：
+- `status`: 任务状态（pending/active/completed/failed）
+- `accountId`: 指定账户
+- `priority`: 优先级
+- `dateFrom/dateTo`: 时间范围
+- `search`: 搜索关键词
 
-**Response:**
+#### 获取任务详情
+```http
+GET /api/v1/tasks/:id
+```
+
+#### 获取任务进度
+```http
+GET /api/v1/tasks/:id/progress
+```
+
+**响应**：
 ```json
 {
-  "taskId": "task-uuid",
-  "jobId": "job-id",
-  "status": "completed",
-  "videoId": "youtube-video-id",
-  "error": null
-}
-```
-
-### Queue Management
-
-#### GET /queue/stats
-Get queue statistics.
-
-**Response:**
-```json
-{
-  "waiting": 5,
-  "active": 2,
-  "completed": 150,
-  "failed": 3,
-  "delayed": 0,
-  "paused": false,
-  "rateLimit": {
-    "max": 100,
-    "duration": 3600000,
-    "current": 25
+  "success": true,
+  "data": {
+    "taskId": "task-uuid",
+    "status": "uploading",
+    "progress": 65,
+    "currentStep": "正在上传视频文件",
+    "estimatedTimeRemaining": 120
   }
 }
 ```
 
-#### GET /queue/jobs
-Get jobs by status.
-
-**Query Parameters:**
-- `status` (string): Job status (waiting, active, completed, failed, delayed)
-- `limit` (number): Maximum number of jobs to return (default: 100)
-
-**Response:**
-```json
-[
-  {
-    "id": "job-id",
-    "name": "upload-task-uuid",
-    "data": {
-      "id": "task-uuid",
-      "accountId": "account-uuid",
-      "video": { /* video data */ }
-    },
-    "opts": {
-      "priority": 1,
-      "delay": 0
-    },
-    "timestamp": 1234567890,
-    "attemptsMade": 0,
-    "progress": 100
-  }
-]
+#### 取消任务
+```http
+POST /api/v1/tasks/:id/cancel
 ```
 
-#### POST /queue/pause
-Pause queue processing.
+#### 重试任务
+```http
+POST /api/v1/tasks/:id/retry
+```
 
-#### POST /queue/resume
-Resume queue processing.
+#### 批量操作
+```http
+PATCH /api/v1/tasks/batch
+Content-Type: application/json
 
-#### POST /queue/jobs/:id/retry
-Retry a failed job.
-
-#### POST /queue/clean
-Clean old completed/failed jobs.
-
-**Request Body:**
-```json
 {
-  "grace": 3600000
+  "taskIds": ["id1", "id2", "id3"],
+  "action": "cancel"
 }
 ```
 
-## Error Responses
+### 5. Dashboard API
 
-All endpoints may return error responses in the following format:
+#### 获取总览统计
+```http
+GET /api/dashboard/stats/overview
+```
 
+**响应**：
 ```json
 {
-  "error": "Error message",
-  "code": "ERROR_CODE",
-  "details": {
-    "field": "Additional error details"
+  "success": true,
+  "data": {
+    "totalUploads24h": 156,
+    "successRate": 94.2,
+    "activeAccounts": 18,
+    "queueDepth": 23,
+    "systemHealth": 88
   }
 }
 ```
 
-Common HTTP status codes:
-- `200` - Success
-- `201` - Created
-- `400` - Bad Request
-- `401` - Unauthorized
-- `403` - Forbidden
-- `404` - Not Found
-- `429` - Too Many Requests
-- `500` - Internal Server Error
-- `503` - Service Unavailable
-
-## Webhooks
-
-Configure webhooks to receive notifications for:
-- Upload completion
-- Upload failure
-- Account health changes
-- System alerts
-
-Webhook configuration is done through environment variables or configuration file.
-
-## Examples
-
-### Upload a video using curl
-
-```bash
-curl -X POST http://localhost:3000/api/upload \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "video": {
-      "path": "/videos/sample.mp4",
-      "title": "My Sample Video",
-      "description": "This is a test upload",
-      "tags": ["test", "sample"],
-      "privacyStatus": "private"
-    },
-    "priority": 1
-  }'
+#### 获取时间序列数据
+```http
+GET /api/dashboard/charts/timeseries?metric=uploads&period=7d
 ```
 
-### Check upload status
+**查询参数**：
+- `metric`: 指标类型（uploads/errors/performance）
+- `period`: 时间周期（1h/24h/7d/30d）
+- `interval`: 数据间隔
 
-```bash
-curl http://localhost:3000/api/tasks/TASK_ID \
-  -H "Authorization: Bearer YOUR_API_KEY"
+#### 获取分布统计
+```http
+GET /api/dashboard/charts/distribution?type=account
 ```
 
-### Add multiple accounts
+### 6. WebSocket 实时通信
 
-```bash
-curl -X POST http://localhost:3000/api/accounts \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "email": "channel1@example.com",
-    "password": "secure_password_1"
-  }'
+#### 连接 WebSocket
+```javascript
+const socket = io('ws://localhost:5989', {
+  auth: {
+    token: 'YOUR_JWT_TOKEN'
+  }
+});
 ```
 
-## SDK Usage
+#### 订阅事件
+
+**任务进度**：
+```javascript
+socket.on('upload:progress', (data) => {
+  console.log('上传进度:', data.progress, '%');
+});
+```
+
+**任务状态变更**：
+```javascript
+socket.on('task:statusChange', (data) => {
+  console.log('任务状态更新:', data.status);
+});
+```
+
+**系统通知**：
+```javascript
+socket.on('system:notification', (data) => {
+  console.log('系统通知:', data.message);
+});
+```
+
+## 错误处理
+
+### 错误响应格式
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "请求参数验证失败",
+    "details": [
+      {
+        "field": "video.title",
+        "message": "标题不能为空"
+      }
+    ]
+  }
+}
+```
+
+### 常见错误码
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-------------|------|
+| UNAUTHORIZED | 401 | 未认证或 Token 无效 |
+| FORBIDDEN | 403 | 无权限访问该资源 |
+| NOT_FOUND | 404 | 资源不存在 |
+| VALIDATION_ERROR | 400 | 请求参数验证失败 |
+| RATE_LIMIT_EXCEEDED | 429 | 请求频率超限 |
+| SERVER_ERROR | 500 | 服务器内部错误 |
+| SERVICE_UNAVAILABLE | 503 | 服务暂时不可用 |
+
+## 使用示例
 
 ### JavaScript/TypeScript
-
 ```typescript
-import { MatrixUploadClient } from '@youtube-matrix/client';
+// 使用 axios 调用 API
+import axios from 'axios';
 
-const client = new MatrixUploadClient({
-  baseUrl: 'http://localhost:3000/api',
-  apiKey: 'YOUR_API_KEY'
-});
-
-// Upload a video
-const result = await client.upload({
-  video: {
-    path: '/path/to/video.mp4',
-    title: 'My Video',
-    description: 'Video description'
+const api = axios.create({
+  baseURL: 'http://localhost:5989/api',
+  headers: {
+    'Authorization': `Bearer ${token}`
   }
 });
 
-// Check status
-const status = await client.getTaskStatus(result.taskId);
-console.log(status);
+// 上传视频
+async function uploadVideo() {
+  try {
+    const response = await api.post('/v1/tasks', {
+      video: {
+        path: '/videos/my-video.mp4',
+        title: '我的视频',
+        description: '这是一个测试视频'
+      },
+      priority: 1
+    });
+    
+    console.log('任务已创建:', response.data);
+  } catch (error) {
+    console.error('上传失败:', error.response.data);
+  }
+}
+
+// 获取任务状态
+async function checkTaskStatus(taskId) {
+  const response = await api.get(`/v1/tasks/${taskId}`);
+  return response.data;
+}
 ```
 
 ### Python
-
 ```python
-from youtube_matrix import MatrixClient
+import requests
 
-client = MatrixClient(
-    base_url='http://localhost:3000/api',
-    api_key='YOUR_API_KEY'
-)
+# 配置 API
+api_base = 'http://localhost:5989/api'
+headers = {
+    'Authorization': f'Bearer {token}',
+    'Content-Type': 'application/json'
+}
 
-# Upload video
-result = client.upload({
-    'video': {
-        'path': '/path/to/video.mp4',
-        'title': 'My Video',
-        'description': 'Video description'
+# 上传视频
+def upload_video():
+    data = {
+        'video': {
+            'path': '/videos/my-video.mp4',
+            'title': '我的视频',
+            'description': '这是一个测试视频'
+        },
+        'priority': 1
     }
-})
+    
+    response = requests.post(
+        f'{api_base}/v1/tasks',
+        json=data,
+        headers=headers
+    )
+    
+    return response.json()
 
-# Check status
-status = client.get_task_status(result['taskId'])
-print(status)
+# 批量获取账户
+def get_accounts(page=1, status='active'):
+    params = {
+        'page': page,
+        'pageSize': 20,
+        'status': status
+    }
+    
+    response = requests.get(
+        f'{api_base}/v1/accounts',
+        params=params,
+        headers=headers
+    )
+    
+    return response.json()
 ```
 
-## Best Practices
+## 最佳实践
 
-1. **Rate Limiting**: Respect rate limits to avoid being blocked
-2. **Error Handling**: Implement exponential backoff for retries
-3. **Batch Operations**: Use batch endpoints when uploading multiple videos
-4. **Health Monitoring**: Regularly check system health before operations
-5. **Account Rotation**: Let the system handle account selection for optimal distribution
-6. **Priority Management**: Use priority levels wisely (0 = normal, higher = more urgent)
-7. **Webhook Integration**: Use webhooks for real-time status updates instead of polling
+### 1. 认证管理
+- 定期刷新 Token，避免过期
+- 安全存储 Token，不要硬编码
+- 使用 HTTPS 传输敏感信息
+
+### 2. 错误处理
+- 实现重试机制，使用指数退避算法
+- 正确处理各种错误码
+- 记录详细的错误日志
+
+### 3. 性能优化
+- 使用批量接口减少请求次数
+- 合理使用分页，避免一次获取过多数据
+- 利用 WebSocket 获取实时更新，减少轮询
+
+### 4. 任务管理
+- 合理设置任务优先级（0=普通，数字越大优先级越高）
+- 让系统自动选择账户，实现负载均衡
+- 定期检查失败任务并重试
+
+### 5. 监控和维护
+- 定期检查系统健康状态
+- 监控账户健康分数
+- 及时处理异常和警告
+
+## 速率限制
+
+默认速率限制：
+- 认证接口：5 次/分钟
+- 上传接口：100 次/小时
+- 查询接口：1000 次/小时
+- WebSocket 连接：每个 IP 最多 10 个并发连接
+
+超过限制会返回 429 状态码，响应头包含：
+- `X-RateLimit-Limit`: 限制数量
+- `X-RateLimit-Remaining`: 剩余配额
+- `X-RateLimit-Reset`: 重置时间
+
+## 更新日志
+
+### v1.0.0 (2025-07-26)
+- 初始版本发布
+- 完整的 RESTful API
+- JWT 认证系统
+- WebSocket 实时通信
+- 批量操作支持

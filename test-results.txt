@@ -1,0 +1,12 @@
+
+> youtube-videos-uploader@2.0.27 test
+> jest 2
+
+No tests found, exiting with code 1
+Run with `--passWithNoTests` to exit with code 0
+In H:\Code\youtube-uploader
+  84 files checked.
+  testMatch: **/__tests__/**/*.ts, **/*.test.ts, **/*.spec.ts - 20 matches
+  testPathIgnorePatterns: \\node_modules\\ - 84 matches
+  testRegex:  - 0 matches
+Pattern: 2 - 0 matches

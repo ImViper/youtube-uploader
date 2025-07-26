@@ -52,7 +52,7 @@ const ThumbnailUpload: React.FC<ThumbnailUploadProps> = ({ value, onChange, disa
       onChange?.(url);
 
       message.success('缩略图已选择');
-    } catch (error) {
+    } catch {
       message.error('图片处理失败');
     } finally {
       setLoading(false);

@@ -4,7 +4,7 @@ import authReducer, {
   loginFailure,
   logout,
   updateUser,
-  clearError
+  clearError,
 } from '@/features/auth/authSlice';
 import type { User, LoadingState } from '@/types';
 
@@ -46,11 +46,11 @@ describe('authSlice', () => {
       const tokens = {
         user: mockUser,
         accessToken: 'test-token',
-        refreshToken: 'refresh-token'
+        refreshToken: 'refresh-token',
       };
 
       const actual = authReducer(initialState, loginSuccess(tokens));
-      
+
       expect(actual.isAuthenticated).toBe(true);
       expect(actual.user).toEqual(mockUser);
       expect(actual.loadingState).toBe('succeeded');
@@ -60,7 +60,7 @@ describe('authSlice', () => {
     it('should handle loginFailure', () => {
       const error = 'Invalid credentials';
       const actual = authReducer(initialState, loginFailure(error));
-      
+
       expect(actual.isAuthenticated).toBe(false);
       expect(actual.user).toBeNull();
       expect(actual.loadingState).toBe('failed');
@@ -76,7 +76,7 @@ describe('authSlice', () => {
       };
 
       const actual = authReducer(loggedInState, logout());
-      
+
       expect(actual.isAuthenticated).toBe(false);
       expect(actual.user).toBeNull();
       expect(actual.loadingState).toBe('idle');
@@ -90,14 +90,14 @@ describe('authSlice', () => {
         error: null,
       };
 
-      const updatedUser: User = { 
+      const updatedUser: User = {
         ...mockUser,
-        username: 'newname', 
-        email: 'new@example.com' 
+        username: 'newname',
+        email: 'new@example.com',
       };
-      
+
       const actual = authReducer(loggedInState, updateUser(updatedUser));
-      
+
       expect(actual.user?.username).toBe('newname');
       expect(actual.user?.email).toBe('new@example.com');
       expect(actual.user?.id).toBe('1');
@@ -106,7 +106,7 @@ describe('authSlice', () => {
     it('should handle clearError', () => {
       const stateWithError: AuthState = {
         ...initialState,
-        error: 'Test error'
+        error: 'Test error',
       };
 
       const actual = authReducer(stateWithError, clearError());
@@ -123,12 +123,15 @@ describe('authSlice', () => {
         error: null,
       };
 
-      const actual = authReducer(authenticatedState, loginSuccess({ 
-        user: mockUser, 
-        accessToken: 'new-token',
-        refreshToken: 'new-refresh-token'
-      }));
-      
+      const actual = authReducer(
+        authenticatedState,
+        loginSuccess({
+          user: mockUser,
+          accessToken: 'new-token',
+          refreshToken: 'new-refresh-token',
+        }),
+      );
+
       expect(actual.isAuthenticated).toBe(true);
       expect(actual.user).toEqual(mockUser);
     });
@@ -142,7 +145,7 @@ describe('authSlice', () => {
       };
 
       const actual = authReducer(authenticatedState, logout());
-      
+
       expect(actual).toEqual(initialState);
     });
 
@@ -152,11 +155,14 @@ describe('authSlice', () => {
       expect(state.loadingState).toBe('loading');
 
       // Login success
-      state = authReducer(state, loginSuccess({
-        user: mockUser,
-        accessToken: 'token',
-        refreshToken: 'refresh'
-      }));
+      state = authReducer(
+        state,
+        loginSuccess({
+          user: mockUser,
+          accessToken: 'token',
+          refreshToken: 'refresh',
+        }),
+      );
       expect(state.isAuthenticated).toBe(true);
       expect(state.loadingState).toBe('succeeded');
 

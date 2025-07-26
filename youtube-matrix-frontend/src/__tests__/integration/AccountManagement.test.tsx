@@ -39,7 +39,7 @@ const server = setupServer(
     });
   }),
   http.post('http://localhost:3000/api/accounts', async ({ request }) => {
-    const body = await request.json() as { username: string; email: string };
+    const body = (await request.json()) as { username: string; email: string };
     return HttpResponse.json({
       id: '3',
       username: body.username,

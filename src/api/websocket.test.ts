@@ -1,0 +1,695 @@
+import { Server as HttpServer, createServer } from 'http';
+import { io as ioclient, Socket as ClientSocket } from 'socket.io-client';
+import jwt from 'jsonwebtoken';
+import { WebSocketManager, initializeWebSocket, getWebSocketManager } from './websocket';
+
+// Mock pino logger
+jest.mock('pino', () => {
+  return jest.fn(() => ({
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+  }));
+});
+
+describe('WebSocket Module', () => {
+  let httpServer: HttpServer;
+  let wsManager: WebSocketManager;
+  let clientSocket: ClientSocket;
+  let port: number;
+
+  const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
+  const validToken = jwt.sign(
+    { id: '123', username: 'testuser', role: 'user' },
+    JWT_SECRET
+  );
+
+  beforeEach((done) => {
+    // Create HTTP server
+    httpServer = createServer();
+    
+    // Get a random port
+    httpServer.listen(0, () => {
+      const address = httpServer.address();
+      port = typeof address === 'object' ? address!.port : 3000;
+      
+      // Initialize WebSocket manager
+      wsManager = initializeWebSocket(httpServer);
+      done();
+    });
+  });
+
+  afterEach((done) => {
+    // Disconnect client if connected
+    if (clientSocket && clientSocket.connected) {
+      clientSocket.disconnect();
+    }
+    
+    // Close server
+    httpServer.close(() => {
+      done();
+    });
+    
+    // Clear singleton
+    (global as any).wsManager = null;
+  });
+
+  describe('WebSocketManager Initialization', () => {
+    it('should initialize WebSocket server correctly', () => {
+      expect(wsManager).toBeDefined();
+      expect(wsManager).toBeInstanceOf(WebSocketManager);
+    });
+
+    it('should return singleton instance', () => {
+      const manager1 = getWebSocketManager();
+      const manager2 = getWebSocketManager();
+      expect(manager1).toBe(manager2);
+      expect(manager1).toBe(wsManager);
+    });
+
+    it('should return null if not initialized', () => {
+      // Clear the singleton
+      (global as any).wsManager = null;
+      const manager = getWebSocketManager();
+      expect(manager).toBeNull();
+    });
+  });
+
+  describe('Client Authentication', () => {
+    it('should accept connection with valid JWT token', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        expect(clientSocket.connected).toBe(true);
+        done();
+      });
+
+      clientSocket.on('connect_error', (error) => {
+        done(error);
+      });
+    });
+
+    it('should accept connection with dev token in development', (done) => {
+      process.env.NODE_ENV = 'development';
+      
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: 'dev-token' },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        expect(clientSocket.connected).toBe(true);
+        process.env.NODE_ENV = 'test';
+        done();
+      });
+
+      clientSocket.on('connect_error', (error) => {
+        process.env.NODE_ENV = 'test';
+        done(error);
+      });
+    });
+
+    it('should reject connection without token', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: {},
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect_error', (error) => {
+        expect(error.message).toContain('Authentication required');
+        done();
+      });
+
+      clientSocket.on('connect', () => {
+        done(new Error('Should not connect without authentication'));
+      });
+    });
+
+    it('should reject connection with invalid token', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: 'invalid-token' },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect_error', (error) => {
+        expect(error.message).toContain('Invalid token');
+        done();
+      });
+
+      clientSocket.on('connect', () => {
+        done(new Error('Should not connect with invalid token'));
+      });
+    });
+
+    it('should reject connection with expired token', (done) => {
+      const expiredToken = jwt.sign(
+        { id: '123', username: 'testuser', role: 'user', exp: Math.floor(Date.now() / 1000) - 3600 },
+        JWT_SECRET
+      );
+
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: expiredToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect_error', (error) => {
+        expect(error.message).toContain('Invalid token');
+        done();
+      });
+
+      clientSocket.on('connect', () => {
+        done(new Error('Should not connect with expired token'));
+      });
+    });
+  });
+
+  describe('Subscription Management', () => {
+    beforeEach((done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        done();
+      });
+    });
+
+    it('should handle uploads subscription', (done) => {
+      clientSocket.emit('subscribe:uploads');
+      
+      // Give some time for subscription to process
+      setTimeout(() => {
+        const summary = wsManager.getSubscriptionsSummary();
+        expect(summary.uploads).toBe(1);
+        done();
+      }, 100);
+    });
+
+    it('should handle system subscription', (done) => {
+      clientSocket.emit('subscribe:system');
+      
+      setTimeout(() => {
+        const summary = wsManager.getSubscriptionsSummary();
+        expect(summary.system).toBe(1);
+        done();
+      }, 100);
+    });
+
+    it('should handle alerts subscription', (done) => {
+      clientSocket.emit('subscribe:alerts');
+      
+      setTimeout(() => {
+        const summary = wsManager.getSubscriptionsSummary();
+        expect(summary.alerts).toBe(1);
+        done();
+      }, 100);
+    });
+
+    it('should handle multiple subscriptions', (done) => {
+      clientSocket.emit('subscribe:uploads');
+      clientSocket.emit('subscribe:system');
+      clientSocket.emit('subscribe:alerts');
+      
+      setTimeout(() => {
+        const summary = wsManager.getSubscriptionsSummary();
+        expect(summary.uploads).toBe(1);
+        expect(summary.system).toBe(1);
+        expect(summary.alerts).toBe(1);
+        done();
+      }, 100);
+    });
+
+    it('should handle unsubscription from uploads', (done) => {
+      clientSocket.emit('subscribe:uploads');
+      
+      setTimeout(() => {
+        clientSocket.emit('unsubscribe:uploads');
+        
+        setTimeout(() => {
+          const summary = wsManager.getSubscriptionsSummary();
+          expect(summary.uploads).toBe(0);
+          done();
+        }, 100);
+      }, 100);
+    });
+
+    it('should handle unsubscription from system', (done) => {
+      clientSocket.emit('subscribe:system');
+      
+      setTimeout(() => {
+        clientSocket.emit('unsubscribe:system');
+        
+        setTimeout(() => {
+          const summary = wsManager.getSubscriptionsSummary();
+          expect(summary.system).toBe(0);
+          done();
+        }, 100);
+      }, 100);
+    });
+
+    it('should handle unsubscription from alerts', (done) => {
+      clientSocket.emit('subscribe:alerts');
+      
+      setTimeout(() => {
+        clientSocket.emit('unsubscribe:alerts');
+        
+        setTimeout(() => {
+          const summary = wsManager.getSubscriptionsSummary();
+          expect(summary.alerts).toBe(0);
+          done();
+        }, 100);
+      }, 100);
+    });
+  });
+
+  describe('Event Emissions', () => {
+    beforeEach((done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        done();
+      });
+    });
+
+    it('should emit upload progress to subscribed clients', (done) => {
+      clientSocket.emit('subscribe:uploads');
+      
+      const progressData = {
+        taskId: 'task-123',
+        accountId: 'account-456',
+        videoTitle: 'Test Video',
+        progress: 50,
+        stage: 'uploading',
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('upload:progress', (data) => {
+        expect(data).toEqual(progressData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitUploadProgress(progressData);
+      }, 100);
+    });
+
+    it('should emit upload complete to subscribed clients', (done) => {
+      clientSocket.emit('subscribe:uploads');
+      
+      const completeData = {
+        taskId: 'task-123',
+        accountId: 'account-456',
+        videoId: 'video-789',
+        videoTitle: 'Test Video',
+        videoUrl: 'https://youtube.com/watch?v=123',
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('upload:complete', (data) => {
+        expect(data).toEqual(completeData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitUploadComplete(completeData);
+      }, 100);
+    });
+
+    it('should emit upload error to subscribed clients', (done) => {
+      clientSocket.emit('subscribe:uploads');
+      
+      const errorData = {
+        taskId: 'task-123',
+        accountId: 'account-456',
+        videoTitle: 'Test Video',
+        error: 'Upload failed',
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('upload:error', (data) => {
+        expect(data).toEqual(errorData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitUploadError(errorData);
+      }, 100);
+    });
+
+    it('should emit system metrics to subscribed clients', (done) => {
+      clientSocket.emit('subscribe:system');
+      
+      const metricsData = {
+        cpuUsage: 45.5,
+        memoryUsage: 60.2,
+        activeUploads: 3,
+        queuedUploads: 10,
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('system:metrics', (data) => {
+        expect(data).toEqual(metricsData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitSystemMetrics(metricsData);
+      }, 100);
+    });
+
+    it('should emit alerts to subscribed clients', (done) => {
+      clientSocket.emit('subscribe:alerts');
+      
+      const alertData = {
+        id: 'alert-123',
+        type: 'error' as const,
+        title: 'System Error',
+        message: 'Database connection failed',
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('alert:new', (data) => {
+        expect(data).toEqual(alertData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitAlert(alertData);
+      }, 100);
+    });
+
+    it('should not emit events to unsubscribed clients', (done) => {
+      // Don't subscribe to any channel
+      const progressData = {
+        taskId: 'task-123',
+        accountId: 'account-456',
+        videoTitle: 'Test Video',
+        progress: 50,
+        stage: 'uploading',
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('upload:progress', () => {
+        done(new Error('Should not receive events without subscription'));
+      });
+
+      wsManager.emitUploadProgress(progressData);
+
+      // Wait a bit and then complete the test
+      setTimeout(() => {
+        done();
+      }, 200);
+    });
+  });
+
+  describe('Additional Event Emissions', () => {
+    beforeEach((done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        done();
+      });
+    });
+
+    it('should emit task status change', (done) => {
+      clientSocket.emit('subscribe:uploads');
+      
+      const statusChangeData = {
+        taskId: 'task-123',
+        accountId: 'account-456',
+        videoTitle: 'Test Video',
+        oldStatus: 'pending',
+        newStatus: 'processing',
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('task:statusChange', (data) => {
+        expect(data).toEqual(statusChangeData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitTaskStatusChange(statusChangeData);
+      }, 100);
+    });
+
+    it('should emit system notification to all clients', (done) => {
+      // System notifications go to all clients
+      const notificationData = {
+        type: 'info' as const,
+        title: 'System Update',
+        message: 'System will undergo maintenance',
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('system:notification', (data) => {
+        expect(data).toEqual(notificationData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitSystemNotification(notificationData);
+      }, 100);
+    });
+
+    it('should emit log entry to system subscribers', (done) => {
+      clientSocket.emit('subscribe:system');
+      
+      const logData = {
+        level: 'info',
+        message: 'Test log message',
+        timestamp: new Date().toISOString(),
+        context: { key: 'value' },
+      };
+
+      clientSocket.on('system:log', (data) => {
+        expect(data).toEqual(logData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitLogEntry(logData);
+      }, 100);
+    });
+
+    it('should emit queue status update', (done) => {
+      clientSocket.emit('subscribe:system');
+      
+      const queueData = {
+        waiting: 5,
+        active: 2,
+        completed: 100,
+        failed: 3,
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('queue:status', (data) => {
+        expect(data).toEqual(queueData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitQueueStatus(queueData);
+      }, 100);
+    });
+
+    it('should emit account status change', (done) => {
+      clientSocket.emit('subscribe:system');
+      
+      const accountStatusData = {
+        accountId: 'account-123',
+        email: 'test@example.com',
+        oldStatus: 'active',
+        newStatus: 'suspended',
+        healthScore: 75,
+        timestamp: new Date().toISOString(),
+      };
+
+      clientSocket.on('account:statusChange', (data) => {
+        expect(data).toEqual(accountStatusData);
+        done();
+      });
+
+      setTimeout(() => {
+        wsManager.emitAccountStatusChange(accountStatusData);
+      }, 100);
+    });
+  });
+
+  describe('Connection Management', () => {
+    it('should track connected clients count', (done) => {
+      expect(wsManager.getConnectedCount()).toBe(0);
+
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        expect(wsManager.getConnectedCount()).toBe(1);
+        
+        // Connect second client
+        const clientSocket2 = ioclient(`http://localhost:${port}`, {
+          auth: { token: validToken },
+          transports: ['websocket'],
+        });
+
+        clientSocket2.on('connect', () => {
+          expect(wsManager.getConnectedCount()).toBe(2);
+          
+          clientSocket2.disconnect();
+          setTimeout(() => {
+            expect(wsManager.getConnectedCount()).toBe(1);
+            done();
+          }, 100);
+        });
+      });
+    });
+
+    it('should handle client disconnect', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        expect(wsManager.getConnectedCount()).toBe(1);
+        
+        clientSocket.disconnect();
+        
+        setTimeout(() => {
+          expect(wsManager.getConnectedCount()).toBe(0);
+          done();
+        }, 100);
+      });
+    });
+
+    it('should clean up subscriptions on disconnect', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        clientSocket.emit('subscribe:uploads');
+        clientSocket.emit('subscribe:system');
+        
+        setTimeout(() => {
+          const summary = wsManager.getSubscriptionsSummary();
+          expect(summary.uploads).toBe(1);
+          expect(summary.system).toBe(1);
+          
+          clientSocket.disconnect();
+          
+          setTimeout(() => {
+            const summaryAfter = wsManager.getSubscriptionsSummary();
+            expect(summaryAfter.uploads).toBe(0);
+            expect(summaryAfter.system).toBe(0);
+            done();
+          }, 100);
+        }, 100);
+      });
+    });
+  });
+
+  describe('Heartbeat Mechanism', () => {
+    it('should send ping to connected clients', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        clientSocket.on('ping', (data) => {
+          expect(data).toHaveProperty('timestamp');
+          expect(typeof data.timestamp).toBe('number');
+          done();
+        });
+
+        // Advance timers to trigger heartbeat
+        jest.advanceTimersByTime(30000);
+      });
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle socket errors gracefully', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        // Emit error event (this would normally come from socket.io internals)
+        clientSocket.emit('error', new Error('Test error'));
+        
+        // Test should complete without crashing
+        setTimeout(() => {
+          expect(wsManager.getConnectedCount()).toBe(1);
+          done();
+        }, 100);
+      });
+    });
+  });
+
+  describe('CORS Configuration', () => {
+    it('should allow connections from configured frontend URL', (done) => {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+        withCredentials: true,
+        extraHeaders: {
+          'Origin': frontendUrl
+        }
+      });
+
+      clientSocket.on('connect', () => {
+        expect(clientSocket.connected).toBe(true);
+        done();
+      });
+
+      clientSocket.on('connect_error', (error) => {
+        done(error);
+      });
+    });
+  });
+
+  describe('Transport Configuration', () => {
+    it('should support websocket transport', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['websocket'],
+      });
+
+      clientSocket.on('connect', () => {
+        expect(clientSocket.io.engine.transport.name).toBe('websocket');
+        done();
+      });
+    });
+
+    it('should support polling transport', (done) => {
+      clientSocket = ioclient(`http://localhost:${port}`, {
+        auth: { token: validToken },
+        transports: ['polling'],
+      });
+
+      clientSocket.on('connect', () => {
+        expect(clientSocket.io.engine.transport.name).toBe('polling');
+        done();
+      });
+    });
+  });
+});

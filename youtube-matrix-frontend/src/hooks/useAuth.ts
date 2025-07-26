@@ -7,6 +7,7 @@ import { useLoginMutation, useLogoutMutation } from '@/features/auth/authApi';
 import { resetApiState } from '@/services/baseApi';
 import websocketService from '@/services/websocket';
 import { showSuccess, showError } from '@/utils/helpers';
+// import { useAuthDev } from './useAuthDev';
 
 export interface LoginCredentials {
   username: string;
@@ -36,8 +37,8 @@ export const useAuth = () => {
         navigate('/dashboard');
 
         return response;
-      } catch (error: any) {
-        const errorMessage = error?.data?.message || 'Invalid credentials';
+      } catch (error: unknown) {
+        const errorMessage = (error as any)?.data?.error || (error as any)?.data?.message || 'Invalid credentials';
         dispatch(loginFailure(errorMessage));
         showError('Login Failed', errorMessage);
         throw error;
@@ -49,9 +50,9 @@ export const useAuth = () => {
   const logout = useCallback(async () => {
     try {
       await logoutMutation().unwrap();
-    } catch (error) {
+    } catch (_error) {
       // Even if logout API fails, we still want to clear local state
-      console.error('Logout API error:', error);
+      console.error('Logout API error:', _error);
     } finally {
       // Clear local state regardless of API response
       dispatch(logoutAction());

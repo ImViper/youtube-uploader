@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: youtube-uploader-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: youtube_uploader
+      POSTGRES_USER: youtube_user
+      POSTGRES_PASSWORD: youtube_password_change_me
+    ports:
+      - "5987:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youtube_user -d youtube_uploader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存和队列
+  redis:
+    image: redis:7-alpine
+    container_name: youtube-uploader-redis
+    restart: unless-stopped
+    ports:
+      - "5988:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass redis_password_change_me
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 管理界面（可选）
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: youtube-uploader-redis-commander
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:redis_password_change_me
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+
+  # PostgreSQL 管理界面（可选）
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: youtube-uploader-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: qiyuan123
+    ports:
+      - "8082:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+    name: youtube-uploader-postgres-data
+  redis_data:
+    name: youtube-uploader-redis-data
+  pgadmin_data:
+    name: youtube-uploader-pgadmin-data

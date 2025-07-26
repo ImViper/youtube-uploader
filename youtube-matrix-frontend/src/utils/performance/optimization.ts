@@ -95,7 +95,11 @@ export class WorkerManager {
       this.workers.set(name, worker);
       return worker;
     }
-    return this.workers.get(name)!;
+    const existingWorker = this.workers.get(name);
+    if (!existingWorker) {
+      throw new Error(`Worker ${name} not found`);
+    }
+    return existingWorker;
   }
 
   /**
@@ -130,7 +134,7 @@ export class WorkerManager {
     return this.workerPool[Math.floor(Math.random() * this.workerPool.length)];
   }
 
-  private releaseWorker(worker: Worker): void {
+  private releaseWorker(_worker: Worker): void {
     // In a real implementation, track worker usage
   }
 

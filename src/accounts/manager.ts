@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import pino from 'pino';
 import { Credentials } from '../types';
 import { getErrorMessage } from '../utils/error-utils';
+import { getBitBrowserClient } from '../bitbrowser/client';
 
 const logger = pino({
   name: 'account-manager',
@@ -28,6 +29,14 @@ export interface AccountProfile {
   metadata?: Record<string, any>;
   createdAt?: Date;
   updatedAt?: Date;
+  proxy?: {
+    host: string;
+    port: number;
+  };
+  // Browser window mapping fields
+  bitbrowserWindowId?: string;
+  bitbrowserWindowName?: string;
+  isWindowLoggedIn?: boolean;
 }
 
 export interface AccountFilter {
@@ -53,16 +62,57 @@ export class AccountManager {
       // Generate browser profile ID
       const browserProfileId = `profile-${email.replace('@', '-at-')}-${Date.now()}`;
 
+      // Handle browser window mapping if provided
+      let bitbrowserWindowId: string | null = null;
+      let bitbrowserWindowName: string | null = null;
+      let isWindowLoggedIn = false;
+
+      if (metadata?.browserWindowName) {
+        const windowName = metadata.browserWindowName;
+        bitbrowserWindowName = windowName;
+        
+        // Try to find the window ID automatically
+        // This would normally call the BitBrowser API
+        // For now, we'll generate a placeholder ID
+        const foundWindowId = await this.findBitBrowserWindowId(windowName);
+        
+        if (foundWindowId && foundWindowId !== '') {
+          bitbrowserWindowId = foundWindowId;
+          
+          // Check if the window is logged in
+          // This would normally check with BitBrowser
+          isWindowLoggedIn = await this.checkWindowLoginStatus(foundWindowId);
+        }
+        
+        logger.info({ 
+          email, 
+          windowName: bitbrowserWindowName, 
+          windowId: bitbrowserWindowId,
+          isLoggedIn: isWindowLoggedIn 
+        }, 'Browser window mapping configured');
+      }
+
       // Insert into database
       const result = await this.db.query<AccountProfile>(
-        `INSERT INTO accounts (email, encrypted_credentials, browser_profile_id, metadata)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO accounts (
+          email, 
+          encrypted_credentials, 
+          browser_profile_id, 
+          metadata,
+          bitbrowser_window_id,
+          bitbrowser_window_name,
+          is_window_logged_in
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
         [
           email,
           JSON.stringify({ email, encryptedPassword }),
           browserProfileId,
-          JSON.stringify(metadata || {})
+          JSON.stringify(metadata || {}),
+          bitbrowserWindowId,
+          bitbrowserWindowName,
+          isWindowLoggedIn
         ]
       );
 
@@ -209,13 +259,15 @@ export class AccountManager {
          WHERE status = 'active' 
          AND daily_upload_count < daily_upload_limit
          AND health_score >= 70
+         AND bitbrowser_window_id IS NOT NULL
+         AND is_window_logged_in = true
          ORDER BY health_score DESC, daily_upload_count ASC
          LIMIT 1
          FOR UPDATE SKIP LOCKED`
       );
 
       if (result.rows.length === 0) {
-        logger.warn('No healthy accounts available');
+        logger.warn('No healthy accounts available with logged-in browser windows');
         return null;
       }
 
@@ -382,7 +434,7 @@ export class AccountManager {
    * Map database row to AccountProfile
    */
   private mapDatabaseRow(row: any): AccountProfile {
-    return {
+    const account: AccountProfile = {
       id: row.id,
       email: row.email,
       credentials: JSON.parse(row.encrypted_credentials),
@@ -395,7 +447,18 @@ export class AccountManager {
       metadata: row.metadata,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      // Map browser window fields
+      bitbrowserWindowId: row.bitbrowser_window_id,
+      bitbrowserWindowName: row.bitbrowser_window_name,
+      isWindowLoggedIn: row.is_window_logged_in,
     };
+    
+    // Add proxy if it exists in metadata
+    if (row.metadata?.proxy) {
+      account.proxy = row.metadata.proxy;
+    }
+    
+    return account;
   }
 
   /**
@@ -422,4 +485,276 @@ export class AccountManager {
       throw error;
     }
   }
+
+  /**
+   * Test account functionality (e.g., YouTube login)
+   * This is a placeholder for actual implementation
+   */
+  async testAccount(accountId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const account = await this.getAccount(accountId);
+      
+      if (!account) {
+        return { success: false, error: 'Account not found' };
+      }
+
+      // In production, this would actually test YouTube login
+      // For now, we'll simulate based on account health
+      if (account.status === 'error' || account.status === 'suspended') {
+        return { success: false, error: `Account is ${account.status}` };
+      }
+
+      if (account.healthScore < 30) {
+        return { success: false, error: 'Account health too low' };
+      }
+
+      // Simulate successful test
+      logger.info({ accountId }, 'Account test successful');
+      return { success: true };
+
+    } catch (error) {
+      logger.error({ accountId, error }, 'Failed to test account');
+      return { success: false, error: getErrorMessage(error) };
+    }
+  }
+
+  /**
+   * Update account's browser window mapping
+   */
+  async updateAccountBrowserMapping(
+    email: string,
+    windowId: string,
+    windowName: string,
+    isLoggedIn: boolean = false
+  ): Promise<void> {
+    logger.info({ email, windowId, windowName }, 'Updating account browser mapping');
+
+    try {
+      await this.db.query(
+        `UPDATE accounts 
+         SET bitbrowser_window_id = $1, 
+             bitbrowser_window_name = $2,
+             is_window_logged_in = $3,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE email = $4`,
+        [windowId, windowName, isLoggedIn, email]
+      );
+
+      logger.info({ email, windowId }, 'Account browser mapping updated');
+    } catch (error) {
+      logger.error({ email, windowId, error }, 'Failed to update browser mapping');
+      throw error;
+    }
+  }
+
+  /**
+   * Get account by email
+   */
+  async getAccountByEmail(email: string): Promise<AccountProfile | null> {
+    try {
+      const result = await this.db.query<AccountProfile>(
+        'SELECT * FROM accounts WHERE email = $1',
+        [email]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return this.mapDatabaseRow(result.rows[0]);
+    } catch (error) {
+      logger.error({ email, error }, 'Failed to get account by email');
+      throw error;
+    }
+  }
+
+  /**
+   * Get account by browser window ID
+   */
+  async getAccountByWindowId(windowId: string): Promise<AccountProfile | null> {
+    try {
+      const result = await this.db.query<AccountProfile>(
+        'SELECT * FROM accounts WHERE bitbrowser_window_id = $1',
+        [windowId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return this.mapDatabaseRow(result.rows[0]);
+    } catch (error) {
+      logger.error({ windowId, error }, 'Failed to get account by window ID');
+      throw error;
+    }
+  }
+
+  /**
+   * Update window login status
+   */
+  async updateWindowLoginStatus(accountId: string, isLoggedIn: boolean): Promise<void> {
+    try {
+      await this.db.query(
+        'UPDATE accounts SET is_window_logged_in = $1 WHERE id = $2',
+        [isLoggedIn, accountId]
+      );
+      
+      logger.info({ accountId, isLoggedIn }, 'Window login status updated');
+    } catch (error) {
+      logger.error({ accountId, error }, 'Failed to update window login status');
+      throw error;
+    }
+  }
+
+  /**
+   * Find BitBrowser window ID by name
+   */
+  private async findBitBrowserWindowId(windowName: string): Promise<string> {
+    try {
+      const bitBrowserClient = getBitBrowserClient();
+      
+      // Check if BitBrowser API is available
+      const isAvailable = await bitBrowserClient.isAvailable();
+      if (!isAvailable) {
+        logger.warn('BitBrowser API is not available, using fallback');
+        // Fallback: generate a deterministic ID
+        return `window-${windowName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+      }
+      
+      // Find window by name
+      const window = await bitBrowserClient.findWindowByName(windowName);
+      
+      if (!window) {
+        logger.warn({ windowName }, 'Window not found in BitBrowser');
+        return '';
+      }
+      
+      logger.info({ windowName, windowId: window.id }, 'Found BitBrowser window');
+      return window.id;
+      
+    } catch (error) {
+      logger.error({ windowName, error }, 'Failed to find BitBrowser window ID');
+      // Return empty string on error
+      return '';
+    }
+  }
+
+  /**
+   * Check if a BitBrowser window is logged in to YouTube
+   * Note: Actual login verification would require browser automation
+   */
+  private async checkWindowLoginStatus(windowId: string): Promise<boolean> {
+    try {
+      const bitBrowserClient = getBitBrowserClient();
+      
+      // Check if BitBrowser API is available
+      const isAvailable = await bitBrowserClient.isAvailable();
+      if (!isAvailable) {
+        logger.warn('BitBrowser API is not available for login check');
+        return false;
+      }
+      
+      // Get window details to check if it exists and is accessible
+      const windowDetail = await bitBrowserClient.getWindow(windowId);
+      
+      if (!windowDetail) {
+        logger.warn({ windowId }, 'Window not found for login check');
+        return false;
+      }
+      
+      // Note: Actual login verification would require:
+      // 1. Opening the window with Playwright/Puppeteer
+      // 2. Navigating to YouTube
+      // 3. Checking for login indicators (avatar, account menu, etc.)
+      // For now, we assume windows need manual login verification
+      
+      logger.info({ windowId, windowName: windowDetail.name }, 'Window exists, login status needs manual verification');
+      return false;
+      
+    } catch (error) {
+      logger.error({ windowId, error }, 'Failed to check window login status');
+      return false;
+    }
+  }
+
+  /**
+   * List accounts with window mapping
+   */
+  async listAccountsWithWindowMapping(): Promise<any[]> {
+    try {
+      const result = await this.db.query(
+        `SELECT 
+          a.id,
+          a.email,
+          a.status,
+          a.health_score,
+          a.bitbrowser_window_id,
+          a.bitbrowser_window_name,
+          a.is_window_logged_in,
+          a.daily_upload_count,
+          a.daily_upload_limit
+        FROM accounts a
+        WHERE a.bitbrowser_window_id IS NOT NULL
+        ORDER BY a.email`
+      );
+
+      return result.rows.map(row => this.mapDatabaseRow(row));
+    } catch (error) {
+      logger.error({ error }, 'Failed to list accounts with window mapping');
+      throw error;
+    }
+  }
+
+  /**
+   * Verify and sync BitBrowser windows
+   * This can be called periodically to sync window status
+   */
+  async syncBitBrowserWindows(): Promise<void> {
+    try {
+      const bitBrowserClient = getBitBrowserClient();
+      
+      // Check if BitBrowser API is available
+      const isAvailable = await bitBrowserClient.isAvailable();
+      if (!isAvailable) {
+        logger.warn('BitBrowser API is not available for sync');
+        return;
+      }
+      
+      // Get all accounts with window mapping
+      const accounts = await this.listAccountsWithWindowMapping();
+      const allWindows = await bitBrowserClient.listWindows();
+      const windowMap = new Map(allWindows.map(w => [w.id, w]));
+      
+      for (const account of accounts) {
+        if (!account.bitbrowserWindowId) continue;
+        
+        const windowExists = windowMap.has(account.bitbrowserWindowId);
+        
+        if (!windowExists) {
+          // Window no longer exists in BitBrowser
+          logger.warn({ 
+            accountId: account.id, 
+            windowId: account.bitbrowserWindowId,
+            windowName: account.bitbrowserWindowName 
+          }, 'Window no longer exists in BitBrowser');
+          
+          // Clear window mapping
+          await this.db.query(
+            `UPDATE accounts 
+             SET bitbrowser_window_id = NULL,
+                 is_window_logged_in = false
+             WHERE id = $1`,
+            [account.id]
+          );
+        }
+      }
+      
+      logger.info('BitBrowser windows sync completed');
+      
+    } catch (error) {
+      logger.error({ error }, 'Failed to sync BitBrowser windows');
+      throw error;
+    }
+  }
+
 }

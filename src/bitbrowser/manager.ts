@@ -20,6 +20,7 @@ export interface BitBrowserConfig {
 export interface BrowserInstance {
   id: string;
   windowId: string;
+  windowName?: string;
   debugUrl: string;
   status: 'idle' | 'busy' | 'error';
   lastActivity: Date;
@@ -28,6 +29,8 @@ export interface BrowserInstance {
   accountId?: string;
   browser?: Browser;
   page?: Page;
+  isPersistent?: boolean; // Whether to keep the window open
+  isLoggedIn?: boolean;   // Whether the window is logged into YouTube
 }
 
 export class BitBrowserManager {
@@ -125,6 +128,19 @@ export class BitBrowserManager {
       const instance = this.instances.get(instanceId);
       if (!instance) {
         logger.warn({ instanceId }, 'Browser instance not found');
+        return;
+      }
+
+      // Check if this is a persistent window
+      if (instance.isPersistent) {
+        logger.info({ instanceId }, 'Keeping persistent browser window open');
+        // Only disconnect Puppeteer, don't close the window
+        if (instance.browser) {
+          await this.disconnectPuppeteer(instanceId);
+        }
+        instance.status = 'idle';
+        instance.lastActivity = new Date();
+        await this.saveBrowserInstance(instance);
         return;
       }
 
@@ -353,33 +369,6 @@ export class BitBrowserManager {
     }
   }
 
-  /**
-   * Save browser instance to database
-   */
-  private async saveBrowserInstance(instance: BrowserInstance): Promise<void> {
-    try {
-      await this.db.query(
-        `INSERT INTO browser_instances (window_id, debug_url, status, error_count, upload_count, last_activity)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (window_id) DO UPDATE SET
-           debug_url = $2,
-           status = $3,
-           error_count = $4,
-           upload_count = $5,
-           last_activity = $6`,
-        [
-          instance.windowId,
-          instance.debugUrl,
-          instance.status,
-          instance.errorCount,
-          instance.uploadCount,
-          instance.lastActivity
-        ]
-      );
-    } catch (error) {
-      logger.error({ error }, 'Failed to save browser instance to database');
-    }
-  }
 
   /**
    * Get all active instances
@@ -426,5 +415,160 @@ export class BitBrowserManager {
     }
 
     this.instances.clear();
+  }
+
+  /**
+   * Get or create a persistent browser instance by window name
+   */
+  async getOrCreatePersistentBrowser(windowName: string): Promise<BrowserInstance> {
+    logger.info({ windowName }, 'Getting or creating persistent browser');
+
+    try {
+      // First check if we already have this window in our instances
+      for (const [id, instance] of this.instances.entries()) {
+        if (instance.windowName === windowName && instance.isPersistent) {
+          logger.info({ windowName, instanceId: id }, 'Found existing persistent browser');
+          
+          // Reconnect if needed
+          if (!instance.browser || instance.status === 'error') {
+            await this.connectPuppeteer(instance);
+          }
+          
+          return instance;
+        }
+      }
+
+      // Get window list from BitBrowser API
+      const windows = await this.apiClient.listBrowsers();
+      const window = windows.data?.list?.find(w => w.name === windowName);
+      
+      if (!window) {
+        throw new Error(`Browser window not found: ${windowName}`);
+      }
+
+      // Open the browser window
+      const response = await this.apiClient.openBrowser(window.id, [
+        `--window-position=${this.config.windowPosition!.x},${this.config.windowPosition!.y}`,
+        ...this.config.defaultArgs!
+      ]);
+
+      if (!response.data?.http) {
+        throw new Error('No debug URL returned from BitBrowser');
+      }
+
+      const debugUrl = `http://${response.data.http}`;
+
+      // Create persistent browser instance
+      const instance: BrowserInstance = {
+        id: window.id,
+        windowId: window.id,
+        windowName,
+        debugUrl,
+        status: 'idle',
+        lastActivity: new Date(),
+        errorCount: 0,
+        uploadCount: 0,
+        isPersistent: true,
+      };
+
+      // Store instance
+      this.instances.set(window.id, instance);
+
+      // Save to database
+      await this.saveBrowserInstance(instance);
+
+      // Connect Puppeteer
+      await this.connectPuppeteer(instance);
+
+      logger.info({ windowName, windowId: window.id }, 'Created persistent browser instance');
+      return instance;
+
+    } catch (error) {
+      logger.error({ windowName, error }, 'Failed to get or create persistent browser');
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize all persistent browsers from config
+   */
+  async initializePersistentBrowsers(windowNames: string[]): Promise<void> {
+    logger.info({ count: windowNames.length }, 'Initializing persistent browsers');
+
+    for (const windowName of windowNames) {
+      try {
+        await this.getOrCreatePersistentBrowser(windowName);
+        logger.info({ windowName }, 'Initialized persistent browser');
+      } catch (error) {
+        logger.error({ windowName, error }, 'Failed to initialize persistent browser');
+      }
+    }
+  }
+
+  /**
+   * Check if a browser window is logged into YouTube
+   */
+  async checkYouTubeLogin(instanceId: string): Promise<boolean> {
+    const instance = this.instances.get(instanceId);
+    if (!instance || !instance.page) {
+      return false;
+    }
+
+    try {
+      await instance.page.goto('https://studio.youtube.com', {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+
+      // Check for login indicator
+      const isLoggedIn = await instance.page.evaluate(() => {
+        // Check for avatar/account menu
+        const accountButton = document.querySelector('[aria-label*="Account"]');
+        const avatarButton = document.querySelector('#avatar-btn');
+        return !!(accountButton || avatarButton);
+      });
+
+      instance.isLoggedIn = isLoggedIn;
+      await this.saveBrowserInstance(instance);
+
+      logger.info({ instanceId, isLoggedIn }, 'YouTube login check completed');
+      return isLoggedIn;
+
+    } catch (error) {
+      logger.error({ instanceId, error }, 'Failed to check YouTube login');
+      return false;
+    }
+  }
+
+  /**
+   * Save browser instance with extended fields
+   */
+  private async saveBrowserInstance(instance: BrowserInstance): Promise<void> {
+    try {
+      await this.db.query(
+        `INSERT INTO browser_instances (window_id, window_name, debug_url, status, error_count, upload_count, last_activity, is_persistent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (window_id) DO UPDATE SET
+           window_name = $2,
+           debug_url = $3,
+           status = $4,
+           error_count = $5,
+           upload_count = $6,
+           last_activity = $7,
+           is_persistent = $8`,
+        [
+          instance.windowId,
+          instance.windowName || null,
+          instance.debugUrl,
+          instance.status,
+          instance.errorCount,
+          instance.uploadCount,
+          instance.lastActivity,
+          instance.isPersistent || false
+        ]
+      );
+    } catch (error) {
+      logger.error({ error }, 'Failed to save browser instance to database');
+    }
   }
 }

@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
 interface PerformanceMetrics {
   renderTime: number;
   componentName: string;
   timestamp: number;
-  props?: Record<string, any>;
+  props?: Record<string, unknown>;
 }
 
 interface UsePerformanceOptions {
@@ -59,7 +59,7 @@ export function usePerformance(componentName: string, options: UsePerformanceOpt
           `${componentName}-render-start`,
           `${componentName}-render-end`,
         );
-      } catch (e) {
+      } catch {
         // Marks may not exist, ignore
       }
     }

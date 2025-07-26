@@ -64,17 +64,17 @@ CREATE TABLE IF NOT EXISTS upload_history (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_accounts_status ON accounts(status);
-CREATE INDEX idx_accounts_health_score ON accounts(health_score);
-CREATE INDEX idx_accounts_daily_upload_count ON accounts(daily_upload_count);
-CREATE INDEX idx_upload_tasks_status ON upload_tasks(status);
-CREATE INDEX idx_upload_tasks_priority ON upload_tasks(priority DESC);
-CREATE INDEX idx_upload_tasks_scheduled_for ON upload_tasks(scheduled_for);
-CREATE INDEX idx_upload_tasks_account_id ON upload_tasks(account_id);
-CREATE INDEX idx_browser_instances_status ON browser_instances(status);
-CREATE INDEX idx_browser_instances_account_id ON browser_instances(account_id);
-CREATE INDEX idx_upload_history_account_id ON upload_history(account_id);
-CREATE INDEX idx_upload_history_created_at ON upload_history(created_at);
+CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status);
+CREATE INDEX IF NOT EXISTS idx_accounts_health_score ON accounts(health_score);
+CREATE INDEX IF NOT EXISTS idx_accounts_daily_upload_count ON accounts(daily_upload_count);
+CREATE INDEX IF NOT EXISTS idx_upload_tasks_status ON upload_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_upload_tasks_priority ON upload_tasks(priority DESC);
+CREATE INDEX IF NOT EXISTS idx_upload_tasks_scheduled_for ON upload_tasks(scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_upload_tasks_account_id ON upload_tasks(account_id);
+CREATE INDEX IF NOT EXISTS idx_browser_instances_status ON browser_instances(status);
+CREATE INDEX IF NOT EXISTS idx_browser_instances_account_id ON browser_instances(account_id);
+CREATE INDEX IF NOT EXISTS idx_upload_history_account_id ON upload_history(account_id);
+CREATE INDEX IF NOT EXISTS idx_upload_history_created_at ON upload_history(created_at);
 
 -- Function to update the updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -86,6 +86,7 @@ END;
 $$ language 'plpgsql';
 
 -- Trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS update_accounts_updated_at ON accounts;
 CREATE TRIGGER update_accounts_updated_at BEFORE UPDATE ON accounts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -131,3 +132,15 @@ SELECT
 FROM upload_tasks
 WHERE status IN ('pending', 'active')
 GROUP BY status;
+
+-- Metrics history table for time-series data
+CREATE TABLE IF NOT EXISTS metrics_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  timestamp TIMESTAMP NOT NULL,
+  metric_type VARCHAR(50) NOT NULL,
+  metric_data JSONB NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_metrics_history_timestamp ON metrics_history(timestamp);
+CREATE INDEX IF NOT EXISTS idx_metrics_history_type ON metrics_history(metric_type);

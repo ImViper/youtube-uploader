@@ -25,21 +25,21 @@ class ErrorTracker {
     // In a real application, this would send errors to a service like Sentry
     // For now, we'll just log to console
     console.error('Error tracked:', error, context);
-    
+
     // You could integrate with Sentry here:
     // if (window.Sentry) {
     //   window.Sentry.captureException(error, context);
     // }
   }
-  
+
   captureMessage(message: string, level: 'info' | 'warning' | 'error' = 'info'): void {
     console.log(`[${level.toUpperCase()}]`, message);
   }
-  
+
   setUser(user: { id: string; email?: string; username?: string }): void {
     console.log('User context set:', user);
   }
-  
+
   clearUser(): void {
     console.log('User context cleared');
   }

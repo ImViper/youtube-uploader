@@ -72,12 +72,13 @@ export class MatrixManager {
   private retryHandler!: RetryHandler;
   private deadLetterQueue!: Queue<UploadTask>;
   private isInitialized = false;
+  private isBrowserInitialized = false;
   private db = getDatabase();
 
   constructor(config: MatrixManagerConfig = {}) {
     this.config = {
       browserPool: {
-        minInstances: 2,
+        minInstances: 0,  // 不自动创建浏览器实例
         maxInstances: 10,
         ...config.browserPool
       },
@@ -112,19 +113,7 @@ export class MatrixManager {
     logger.info('Initializing matrix manager');
 
     try {
-      // Initialize BitBrowser manager
-      this.bitBrowserManager = new BitBrowserManager({
-        apiUrl: this.config.bitBrowserUrl!
-      });
-
-      // Initialize browser pool
-      this.browserPool = new BrowserPool(this.bitBrowserManager, {
-        minInstances: this.config.browserPool!.minInstances,
-        maxInstances: this.config.browserPool!.maxInstances
-      });
-      await this.browserPool.initialize();
-
-      // Initialize account manager
+      // Initialize account manager first (no external dependencies)
       this.accountManager = new AccountManager();
 
       // Initialize account selector
@@ -148,15 +137,57 @@ export class MatrixManager {
         rateLimit: this.config.queue!.rateLimit
       });
 
-      // Initialize dead letter queue
+      // Initialize dead letter queue with same connection config as QueueManager
       this.deadLetterQueue = new Queue<UploadTask>('youtube-uploads-dlq', {
-        connection: getRedis().getClient()
+        connection: {
+          host: process.env.REDIS_HOST || 'localhost',
+          port: parseInt(process.env.REDIS_PORT || '5988'),
+          password: process.env.REDIS_PASSWORD
+        }
       });
 
       // Initialize retry handler
       this.retryHandler = new RetryHandler(this.deadLetterQueue);
 
-      // Initialize upload worker
+      // Lazy initialization: Don't initialize BitBrowser until needed
+      logger.info('Skipping BitBrowser initialization - will initialize on first use');
+
+      // Setup event listeners
+      this.setupEventListeners();
+
+      this.isInitialized = true;
+      logger.info('Matrix manager initialized successfully (without BitBrowser)');
+
+    } catch (error) {
+      logger.error({ error }, 'Failed to initialize matrix manager');
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize BitBrowser components when needed
+   */
+  private async initializeBrowserIfNeeded(): Promise<void> {
+    if (this.isBrowserInitialized) {
+      return;
+    }
+
+    logger.info('Initializing BitBrowser components on first use');
+
+    try {
+      // Initialize BitBrowser manager
+      this.bitBrowserManager = new BitBrowserManager({
+        apiUrl: this.config.bitBrowserUrl!
+      });
+
+      // Initialize browser pool
+      this.browserPool = new BrowserPool(this.bitBrowserManager, {
+        minInstances: this.config.browserPool!.minInstances,
+        maxInstances: this.config.browserPool!.maxInstances
+      });
+      await this.browserPool.initialize();
+
+      // Initialize upload worker with browser pool
       this.uploadWorker = new UploadWorker('youtube-uploads', {
         concurrency: this.config.queue!.concurrency,
         browserPool: this.browserPool,
@@ -167,14 +198,16 @@ export class MatrixManager {
       // Start the worker
       await this.uploadWorker.start();
 
-      // Setup event listeners
-      this.setupEventListeners();
+      // Setup browser pool event listeners
+      this.browserPool.on('instanceError', (instance) => {
+        logger.error({ instance }, 'Browser instance error');
+      });
 
-      this.isInitialized = true;
-      logger.info('Matrix manager initialized successfully');
+      this.isBrowserInitialized = true;
+      logger.info('BitBrowser components initialized successfully');
 
     } catch (error) {
-      logger.error({ error }, 'Failed to initialize matrix manager');
+      logger.error({ error }, 'Failed to initialize BitBrowser components');
       throw error;
     }
   }
@@ -242,6 +275,9 @@ export class MatrixManager {
     if (!this.isInitialized) {
       await this.initialize();
     }
+
+    // Initialize browser components when first upload is requested
+    await this.initializeBrowserIfNeeded();
 
     const taskId = uuidv4();
 
@@ -412,21 +448,23 @@ export class MatrixManager {
       });
     }
 
-    // Browser pool events
-    this.browserPool.on('instanceError', (instance) => {
-      logger.error({ instance }, 'Browser instance error');
-    });
+    // Browser pool events will be set up when browser is initialized
   }
 
   /**
    * Get system status
    */
   async getSystemStatus() {
-    const [queueStats, poolStats, accountStats] = await Promise.all([
+    const [queueStats, accountStats] = await Promise.all([
       this.queueManager.getStats(),
-      this.browserPool.getStats(),
       this.accountManager.getAccountStats()
     ]);
+
+    // Get browser pool stats only if initialized
+    let poolStats = null;
+    if (this.isBrowserInitialized && this.browserPool) {
+      poolStats = await this.browserPool.getStats();
+    }
 
     const systemMetrics = this.accountMonitor ? 
       await this.accountMonitor.getSystemMetrics() : null;
@@ -437,6 +475,7 @@ export class MatrixManager {
       accounts: accountStats,
       metrics: systemMetrics,
       initialized: this.isInitialized,
+      browserInitialized: this.isBrowserInitialized,
       timestamp: new Date()
     };
   }
@@ -447,10 +486,13 @@ export class MatrixManager {
   async pause(): Promise<void> {
     logger.info('Pausing matrix operations');
     
-    await Promise.all([
-      this.queueManager.pause(),
-      this.uploadWorker.pause()
-    ]);
+    const promises = [this.queueManager.pause()];
+    
+    if (this.isBrowserInitialized && this.uploadWorker) {
+      promises.push(this.uploadWorker.pause());
+    }
+    
+    await Promise.all(promises);
 
     logger.info('Matrix operations paused');
   }
@@ -461,10 +503,13 @@ export class MatrixManager {
   async resume(): Promise<void> {
     logger.info('Resuming matrix operations');
     
-    await Promise.all([
-      this.queueManager.resume(),
-      this.uploadWorker.resume()
-    ]);
+    const promises = [this.queueManager.resume()];
+    
+    if (this.isBrowserInitialized && this.uploadWorker) {
+      promises.push(this.uploadWorker.resume());
+    }
+    
+    await Promise.all(promises);
 
     logger.info('Matrix operations resumed');
   }
@@ -481,16 +526,21 @@ export class MatrixManager {
         this.accountMonitor.stop();
       }
 
-      // Shutdown worker
-      await this.uploadWorker.shutdown();
+      // Shutdown worker if initialized
+      if (this.isBrowserInitialized && this.uploadWorker) {
+        await this.uploadWorker.shutdown();
+      }
 
       // Shutdown queue
       await this.queueManager.shutdown();
 
-      // Shutdown browser pool
-      await this.browserPool.shutdown();
+      // Shutdown browser pool if initialized
+      if (this.isBrowserInitialized && this.browserPool) {
+        await this.browserPool.shutdown();
+      }
 
       this.isInitialized = false;
+      this.isBrowserInitialized = false;
       logger.info('Matrix manager shutdown complete');
 
     } catch (error) {

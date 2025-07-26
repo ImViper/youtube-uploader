@@ -25,7 +25,7 @@ export class DatabaseConnection {
   constructor(config?: DatabaseConfig) {
     const poolConfig: PoolConfig = {
       host: config?.host || process.env.DB_HOST || 'localhost',
-      port: config?.port || parseInt(process.env.DB_PORT || '5432'),
+      port: config?.port || parseInt(process.env.DB_PORT || '5987'),
       database: config?.database || process.env.DB_NAME || 'youtube_uploader',
       user: config?.user || process.env.DB_USER || 'postgres',
       password: config?.password || process.env.DB_PASSWORD,

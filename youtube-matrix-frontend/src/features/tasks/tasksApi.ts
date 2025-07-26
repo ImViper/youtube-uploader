@@ -1,51 +1,157 @@
 import { baseApi } from '@/services/baseApi';
 import type { ApiResponse, PaginatedResponse } from '@/types';
-import type { Task } from './tasksSlice';
+
+// Task types matching backend
+export type TaskType = 'upload' | 'update' | 'comment' | 'analytics';
+export type TaskStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface Task {
+  id: string;
+  type: TaskType;
+  status: TaskStatus;
+  priority: TaskPriority;
+  accountId?: string;
+  matrixId?: string;
+  scheduledAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  result?: any;
+  error?: string;
+  progress?: number;
+  attempts?: number;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+  
+  // Video-specific fields for upload tasks
+  video?: {
+    path: string;
+    title: string;
+    description: string;
+    tags?: string[];
+    language?: string;
+    playlist?: string;
+    thumbnail?: string;
+    publishType?: 'PRIVATE' | 'UNLISTED' | 'PUBLIC';
+    channelName?: string;
+    uploadAsDraft?: boolean;
+    isAgeRestriction?: boolean;
+    isNotForKid?: boolean;
+  };
+  
+  // Computed fields for UI compatibility
+  title?: string;
+  description?: string;
+  tags?: string[];
+  videoUrl?: string;
+  thumbnailUrl?: string;
+}
 
 interface TasksQueryParams {
   page?: number;
   pageSize?: number;
-  status?: Task['status'] | 'all';
-  type?: Task['type'] | 'all';
+  type?: TaskType;
+  status?: TaskStatus | 'all';
   accountId?: string;
+  matrixId?: string;
+  priority?: TaskPriority;
   dateFrom?: string;
   dateTo?: string;
-  sortBy?: 'createdAt' | 'priority' | 'status' | 'type';
+  sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  search?: string;
 }
 
-interface RetryTaskRequest {
+interface CreateTaskRequest {
+  type: TaskType;
+  priority?: TaskPriority;
+  accountId?: string;
+  scheduledAt?: string;
+  video?: {
+    path: string;
+    title: string;
+    description: string;
+    tags?: string[];
+    thumbnail?: string;
+    publishType?: 'PRIVATE' | 'UNLISTED' | 'PUBLIC';
+    language?: string;
+  };
+  data?: any;
+  metadata?: Record<string, any>;
+}
+
+interface UpdateTaskRequest {
   id: string;
-  options?: {
-    priority?: Task['priority'];
+  data: {
+    priority?: TaskPriority;
     scheduledAt?: string;
+    video?: Partial<CreateTaskRequest['video']>;
+    metadata?: Record<string, any>;
   };
 }
 
-interface BatchRetryRequest {
-  ids: string[];
-  options?: {
-    priority?: Task['priority'];
-    scheduledAt?: string;
+interface BatchCreateTaskRequest {
+  tasks: CreateTaskRequest[];
+}
+
+// Transform task to match Upload interface for backward compatibility
+function transformTaskToUpload(task: Task): any {
+  return {
+    id: task.id,
+    accountId: task.accountId || '',
+    videoPath: task.video?.path || '',
+    title: task.video?.title || task.title || 'Untitled',
+    description: task.video?.description || task.description || '',
+    tags: task.video?.tags || task.tags || [],
+    thumbnailPath: task.video?.thumbnail || task.thumbnailUrl || '',
+    status: mapTaskStatusToUploadStatus(task.status),
+    progress: task.progress || 0,
+    error: task.error,
+    videoId: task.result?.videoId,
+    url: task.result?.videoUrl || task.videoUrl,
+    scheduledAt: task.scheduledAt,
+    completedAt: task.completedAt,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
   };
 }
 
-interface TaskDetailsResponse extends Task {
-  logs: Array<{
-    timestamp: string;
-    level: 'info' | 'warn' | 'error';
-    message: string;
-    details?: any;
-  }>;
+function mapTaskStatusToUploadStatus(status: TaskStatus): string {
+  const statusMap: Record<TaskStatus, string> = {
+    'pending': 'pending',
+    'queued': 'pending',
+    'processing': 'uploading',
+    'completed': 'completed',
+    'failed': 'failed',
+    'cancelled': 'cancelled'
+  };
+  return statusMap[status] || status;
 }
 
 export const tasksApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
+    // Get tasks (with upload type filter for backward compatibility)
     getTasks: builder.query<PaginatedResponse<Task>, TasksQueryParams>({
       query: (params) => ({
-        url: '/tasks',
-        params,
+        url: '/v1/tasks',
+        params: {
+          ...params,
+          type: params.type || 'upload', // Default to upload tasks
+        },
       }),
+      transformResponse: (response: PaginatedResponse<Task>) => {
+        // Add computed fields for UI
+        const items = response.items.map(task => ({
+          ...task,
+          title: task.video?.title || task.title,
+          description: task.video?.description || task.description,
+          tags: task.video?.tags || task.tags,
+          videoUrl: task.result?.videoUrl || task.videoUrl,
+          thumbnailUrl: task.video?.thumbnail || task.thumbnailUrl,
+        }));
+        return { ...response, items };
+      },
       providesTags: (result) =>
         result
           ? [
@@ -55,16 +161,46 @@ export const tasksApi = baseApi.injectEndpoints({
           : [{ type: 'Task', id: 'LIST' }],
     }),
 
-    getTask: builder.query<TaskDetailsResponse, string>({
-      query: (id) => `/tasks/${id}`,
+    // Get single task
+    getTask: builder.query<Task, string>({
+      query: (id) => `/v1/tasks/${id}`,
+      transformResponse: (task: Task) => ({
+        ...task,
+        title: task.video?.title || task.title,
+        description: task.video?.description || task.description,
+        tags: task.video?.tags || task.tags,
+        videoUrl: task.result?.videoUrl || task.videoUrl,
+        thumbnailUrl: task.video?.thumbnail || task.thumbnailUrl,
+      }),
       providesTags: (_result, _error, id) => [{ type: 'Task', id }],
     }),
 
-    retryTask: builder.mutation<Task, RetryTaskRequest>({
-      query: ({ id, options }) => ({
-        url: `/tasks/${id}/retry`,
+    // Create task
+    createTask: builder.mutation<Task, CreateTaskRequest>({
+      query: (body) => ({
+        url: '/v1/tasks',
         method: 'POST',
-        body: options,
+        body,
+      }),
+      invalidatesTags: [{ type: 'Task', id: 'LIST' }],
+    }),
+
+    // Batch create tasks
+    batchCreateTasks: builder.mutation<Task[], BatchCreateTaskRequest>({
+      query: (body) => ({
+        url: '/v1/tasks/batch',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [{ type: 'Task', id: 'LIST' }],
+    }),
+
+    // Update task
+    updateTask: builder.mutation<Task, UpdateTaskRequest>({
+      query: ({ id, data }) => ({
+        url: `/v1/tasks/${id}`,
+        method: 'PATCH',
+        body: data,
       }),
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'Task', id },
@@ -72,18 +208,10 @@ export const tasksApi = baseApi.injectEndpoints({
       ],
     }),
 
-    batchRetryTasks: builder.mutation<Task[], BatchRetryRequest>({
-      query: ({ ids, options }) => ({
-        url: '/tasks/batch/retry',
-        method: 'POST',
-        body: { ids, ...options },
-      }),
-      invalidatesTags: [{ type: 'Task', id: 'LIST' }],
-    }),
-
+    // Cancel task
     cancelTask: builder.mutation<ApiResponse, string>({
       query: (id) => ({
-        url: `/tasks/${id}/cancel`,
+        url: `/v1/tasks/${id}/cancel`,
         method: 'POST',
       }),
       invalidatesTags: (_result, _error, id) => [
@@ -92,19 +220,11 @@ export const tasksApi = baseApi.injectEndpoints({
       ],
     }),
 
-    batchCancelTasks: builder.mutation<ApiResponse, string[]>({
-      query: (ids) => ({
-        url: '/tasks/batch/cancel',
-        method: 'POST',
-        body: { ids },
-      }),
-      invalidatesTags: [{ type: 'Task', id: 'LIST' }],
-    }),
-
-    deleteTask: builder.mutation<ApiResponse, string>({
+    // Retry task
+    retryTask: builder.mutation<Task, string>({
       query: (id) => ({
-        url: `/tasks/${id}`,
-        method: 'DELETE',
+        url: `/v1/tasks/${id}/retry`,
+        method: 'POST',
       }),
       invalidatesTags: (_result, _error, id) => [
         { type: 'Task', id },
@@ -112,27 +232,103 @@ export const tasksApi = baseApi.injectEndpoints({
       ],
     }),
 
-    batchDeleteTasks: builder.mutation<ApiResponse, string[]>({
-      query: (ids) => ({
-        url: '/tasks/batch',
-        method: 'DELETE',
-        body: { ids },
-      }),
-      invalidatesTags: [{ type: 'Task', id: 'LIST' }],
+    // Get task progress
+    getTaskProgress: builder.query<{ progress: number; status: string }, string>({
+      query: (id) => `/v1/tasks/${id}/progress`,
     }),
 
-    getTaskStats: builder.query<
-      {
-        total: number;
-        byStatus: Record<Task['status'], number>;
-        byType: Record<Task['type'], number>;
-        failureRate: number;
-        avgExecutionTime: number;
+    // Schedule task
+    scheduleTask: builder.mutation<Task, { id: string; scheduledAt: string }>({
+      query: ({ id, scheduledAt }) => ({
+        url: `/v1/tasks/${id}/schedule`,
+        method: 'POST',
+        body: { scheduledAt },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Task', id },
+        { type: 'Task', id: 'LIST' },
+      ],
+    }),
+
+    // Get task statistics
+    getTaskStats: builder.query<any, TasksQueryParams>({
+      query: (params) => ({
+        url: '/v1/tasks/stats',
+        params,
+      }),
+    }),
+
+    // Backward compatibility: Upload-specific endpoints that map to tasks
+    getUploads: builder.query<PaginatedResponse<any>, TasksQueryParams>({
+      query: (params) => ({
+        url: '/v1/tasks',
+        params: {
+          ...params,
+          type: 'upload',
+        },
+      }),
+      transformResponse: (response: PaginatedResponse<Task>) => {
+        const items = response.items.map(transformTaskToUpload);
+        return { ...response, items };
       },
-      void
-    >({
-      query: () => '/tasks/stats',
-      providesTags: ['Task'],
+      providesTags: ['Upload'],
+    }),
+
+    createUpload: builder.mutation<any, any>({
+      query: (body) => {
+        // Transform upload request to task request
+        const taskRequest: CreateTaskRequest = {
+          type: 'upload',
+          priority: 'normal',
+          accountId: body.accountId,
+          scheduledAt: body.publishAt || body.scheduledAt, // 定时发布
+          video: {
+            // Required fields - 现在直接使用路径
+            path: body.videoPath || '',
+            title: body.title,
+            description: body.description,
+            
+            // Optional fields that map directly
+            tags: body.tags,
+            thumbnail: body.thumbnailPath || '',
+            publishType: body.privacy?.toUpperCase() as any || 'PUBLIC',
+            language: body.language,
+            playlist: body.playlist,
+            gameTitleSearch: body.gameTitle,
+            
+            // Boolean fields with special handling
+            isNotForKid: body.madeForKids === true ? false : true, // 注意逻辑相反
+            isAgeRestriction: body.ageRestriction || false,
+            uploadAsDraft: body.uploadAsDraft || false,
+            isChannelMonetized: body.isChannelMonetized || false,
+            
+            // Location handling - only automaticPlaces is supported
+            automaticPlaces: body.location ? false : true, // 如果前端提供了位置，禁用自动位置
+            
+            // Channel selection (if needed)
+            channelName: body.channelName,
+          },
+          metadata: {
+            // 存储前端特有的字段，这些字段后端Video类型不支持
+            categoryId: body.categoryId,
+            location: body.location, // 手动输入的位置
+            recordingDate: body.recordingDate,
+            allowComments: body.allowComments !== false, // 默认true
+            allowRatings: body.allowRatings !== false, // 默认true
+            allowEmbedding: body.allowEmbedding !== false, // 默认true
+            originalFileName: body.videoFile?.name,
+            thumbnailFileName: body.thumbnailFile?.name,
+          }
+        };
+        
+        return {
+          url: '/v1/tasks',
+          method: 'POST',
+          body: taskRequest,
+        };
+      },
+      transformResponse: transformTaskToUpload,
+      invalidatesTags: ['Upload', { type: 'Task', id: 'LIST' }],
     }),
   }),
 });
@@ -140,35 +336,15 @@ export const tasksApi = baseApi.injectEndpoints({
 export const {
   useGetTasksQuery,
   useGetTaskQuery,
-  useRetryTaskMutation,
-  useBatchRetryTasksMutation,
+  useCreateTaskMutation,
+  useBatchCreateTasksMutation,
+  useUpdateTaskMutation,
   useCancelTaskMutation,
-  useBatchCancelTasksMutation,
-  useDeleteTaskMutation,
-  useBatchDeleteTasksMutation,
+  useRetryTaskMutation,
+  useGetTaskProgressQuery,
+  useScheduleTaskMutation,
   useGetTaskStatsQuery,
+  // Backward compatibility exports
+  useGetUploadsQuery,
+  useCreateUploadMutation,
 } = tasksApi;
-
-// 导出兼容性函数
-export const useDeleteTasksMutation = () => {
-  return useBatchDeleteTasksMutation();
-};
-
-// 导出空的钩子函数以兼容
-export const usePauseTaskMutation = () => {
-  return [
-    async (_id: string) => {
-      console.warn('Pause task functionality not implemented');
-      return { data: null };
-    },
-  ] as const;
-};
-
-export const useResumeTaskMutation = () => {
-  return [
-    async (_id: string) => {
-      console.warn('Resume task functionality not implemented');
-      return { data: null };
-    },
-  ] as const;
-};

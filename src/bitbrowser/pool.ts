@@ -39,7 +39,7 @@ export class BrowserPool extends EventEmitter {
     
     this.manager = manager;
     this.config = {
-      minInstances: config.minInstances || 2,
+      minInstances: config.minInstances || 0,  // 默认不创建实例
       maxInstances: config.maxInstances || 10,
       idleTimeout: config.idleTimeout || 300000, // 5 minutes
       healthCheckInterval: config.healthCheckInterval || 30000, // 30 seconds
@@ -58,12 +58,14 @@ export class BrowserPool extends EventEmitter {
     logger.info({ config: this.config }, 'Initializing browser pool');
 
     try {
-      // Create minimum number of instances
-      const promises: Promise<void>[] = [];
-      for (let i = 0; i < this.config.minInstances!; i++) {
-        promises.push(this.createInstance());
+      // Create minimum number of instances (if configured)
+      if (this.config.minInstances! > 0) {
+        const promises: Promise<void>[] = [];
+        for (let i = 0; i < this.config.minInstances!; i++) {
+          promises.push(this.createInstance());
+        }
+        await Promise.all(promises);
       }
-      await Promise.all(promises);
 
       // Start health check timer
       this.startHealthCheck();

@@ -105,7 +105,7 @@ const AccountsPage: React.FC = () => {
       }
       setFormModalVisible(false);
       refetch();
-    } catch (error) {
+    } catch {
       message.error(editingAccount ? '更新失败' : '创建失败');
     }
   };
@@ -122,7 +122,7 @@ const AccountsPage: React.FC = () => {
           await deleteAccount(id).unwrap();
           message.success('账户删除成功');
           refetch();
-        } catch (error) {
+        } catch {
           message.error('删除失败');
         }
       },
@@ -142,7 +142,7 @@ const AccountsPage: React.FC = () => {
           message.success(`成功删除 ${ids.length} 个账户`);
           dispatch(clearSelection());
           refetch();
-        } catch (error) {
+        } catch {
           message.error('批量删除失败');
         }
       },
@@ -157,7 +157,7 @@ const AccountsPage: React.FC = () => {
       }).unwrap();
       message.success('状态更新成功');
       refetch();
-    } catch (error) {
+    } catch {
       message.error('状态更新失败');
     }
   };
@@ -180,7 +180,7 @@ const AccountsPage: React.FC = () => {
       await exportAccounts({ format, includePasswords });
       // API 应该返回文件URL或直接触发下载
       message.success('导出成功');
-    } catch (error) {
+    } catch {
       message.error('导出失败');
     }
   };

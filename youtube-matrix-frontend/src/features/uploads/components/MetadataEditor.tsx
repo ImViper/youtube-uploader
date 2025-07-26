@@ -12,7 +12,7 @@ import {
   Typography,
   Divider,
 } from 'antd';
-import { InfoCircleOutlined, SaveOutlined, CopyOutlined, PlusOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined, SaveOutlined, CopyOutlined, PlusOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import type { Upload } from '../uploadsSlice';
 
 const { TextArea } = Input;
@@ -26,23 +26,35 @@ interface MetadataEditorProps {
 }
 
 export interface VideoMetadata {
+  // Core fields supported by youtube-uploader
   title: string;
   description: string;
   tags: string[];
-  categoryId?: string;
   privacy: 'public' | 'unlisted' | 'private';
   publishAt?: string;
   scheduledAt?: string;
   playlist?: string;
   language?: string;
-  location?: string;
-  recordingDate?: string;
   gameTitle?: string;
   madeForKids: boolean;
   ageRestriction: boolean;
-  allowComments: boolean;
-  allowRatings: boolean;
-  allowEmbedding: boolean;
+  
+  // Backend-specific fields
+  channelName?: string;
+  uploadAsDraft?: boolean;
+  isChannelMonetized?: boolean;
+  
+  // File paths
+  videoPath?: string;
+  thumbnailPath?: string;
+  
+  // Frontend-only fields (stored in metadata)
+  categoryId?: string;
+  location?: string;
+  recordingDate?: string;
+  allowComments?: boolean;
+  allowRatings?: boolean;
+  allowEmbedding?: boolean;
 }
 
 interface MetadataTemplate {
@@ -157,6 +169,8 @@ const MetadataEditor: React.FC<MetadataEditorProps> = ({
         privacy: 'public',
         madeForKids: false,
         ageRestriction: false,
+        uploadAsDraft: false,
+        isChannelMonetized: false,
         allowComments: true,
         allowRatings: true,
         allowEmbedding: true,
@@ -186,6 +200,32 @@ const MetadataEditor: React.FC<MetadataEditorProps> = ({
           </Space>
         </Form.Item>
       )}
+
+      <Divider />
+
+      {/* 文件路径 */}
+      <Form.Item
+        name="videoPath"
+        label="视频文件路径"
+        rules={[{ required: true, message: '请输入视频文件的完整路径' }]}
+        tooltip="输入服务器上视频文件的完整路径"
+      >
+        <Input 
+          placeholder="例如: C:\Videos\my-video.mp4 或 /home/user/videos/my-video.mp4" 
+          prefix={<FolderOpenOutlined />}
+        />
+      </Form.Item>
+
+      <Form.Item
+        name="thumbnailPath"
+        label="缩略图路径（可选）"
+        tooltip="输入服务器上缩略图文件的完整路径"
+      >
+        <Input 
+          placeholder="例如: C:\Thumbnails\thumbnail.jpg 或 /home/user/thumbnails/thumbnail.jpg" 
+          prefix={<FolderOpenOutlined />}
+        />
+      </Form.Item>
 
       <Divider />
 
@@ -334,16 +374,36 @@ const MetadataEditor: React.FC<MetadataEditorProps> = ({
             <Switch />
           </Form.Item>
 
-          <Form.Item name="allowComments" label="允许评论" valuePropName="checked">
+          <Form.Item 
+            name="uploadAsDraft" 
+            label="保存为草稿" 
+            valuePropName="checked"
+            tooltip="将视频保存为草稿而不是立即发布"
+          >
             <Switch />
+          </Form.Item>
+
+          <Form.Item 
+            name="isChannelMonetized" 
+            label="频道已开启获利" 
+            valuePropName="checked"
+            tooltip="如果您的频道已开启获利功能，请勾选此项"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Divider orientation="left">以下设置暂不支持（将保存备用）</Divider>
+
+          <Form.Item name="allowComments" label="允许评论" valuePropName="checked">
+            <Switch disabled />
           </Form.Item>
 
           <Form.Item name="allowRatings" label="允许评分" valuePropName="checked">
-            <Switch />
+            <Switch disabled />
           </Form.Item>
 
           <Form.Item name="allowEmbedding" label="允许嵌入" valuePropName="checked">
-            <Switch />
+            <Switch disabled />
           </Form.Item>
         </Space>
       </Space>

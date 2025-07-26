@@ -30,7 +30,7 @@ class ActivityTracker {
   private session: UserSession;
   private maxActions = 50;
   private enabled = true;
-  private trackingHandlers = new Map<string, Function>();
+  private trackingHandlers = new Map<string, (...args: unknown[]) => unknown>();
 
   constructor() {
     this.session = this.initializeSession();
@@ -316,7 +316,7 @@ class ActivityTracker {
   /**
    * Add custom tracking handler
    */
-  addTrackingHandler(name: string, handler: Function): void {
+  addTrackingHandler(name: string, handler: (...args: unknown[]) => unknown): void {
     this.trackingHandlers.set(name, handler);
   }
 

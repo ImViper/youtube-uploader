@@ -1,0 +1,15 @@
+Route order fix needed:
+
+Current problematic order:
+1. GET /accounts
+2. GET /accounts/:id  <-- This catches everything including /accounts/stats
+3. GET /accounts/stats  <-- Never reached
+4. GET /accounts/export  <-- Never reached
+
+Correct order should be:
+1. GET /accounts
+2. GET /accounts/stats  <-- Specific routes first
+3. GET /accounts/export  <-- Specific routes first
+4. GET /accounts/:id  <-- Catch-all route last
+
+This is a common Express routing issue where parameterized routes catch specific routes if they come first.

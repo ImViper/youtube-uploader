@@ -192,6 +192,24 @@ const AccountList: React.FC<AccountListProps> = ({
       ),
     },
     {
+      title: '浏览器窗口',
+      key: 'browserWindow',
+      width: 200,
+      render: (_, record) => {
+        if (!record.browserWindowName) {
+          return <Tag color="default">未绑定</Tag>;
+        }
+        return (
+          <Space direction="vertical" size={0}>
+            <span>{record.browserWindowName}</span>
+            <Tag color={record.isWindowLoggedIn ? 'success' : 'warning'}>
+              {record.isWindowLoggedIn ? '已登录' : '未登录'}
+            </Tag>
+          </Space>
+        );
+      },
+    },
+    {
       title: '代理',
       dataIndex: 'proxy',
       key: 'proxy',
@@ -301,6 +319,15 @@ const AccountList: React.FC<AccountListProps> = ({
               <span style={{ marginLeft: 8 }}>{record.notes}</span>
             </div>
           )}
+          {record.browserWindowName && (
+            <div>
+              <strong>浏览器窗口：</strong>
+              <span style={{ marginLeft: 8 }}>
+                {record.browserWindowName}
+                {record.browserWindowId && ` (ID: ${record.browserWindowId})`}
+              </span>
+            </div>
+          )}
           <div>
             <strong>创建时间：</strong>
             <span style={{ marginLeft: 8 }}>
@@ -350,9 +377,9 @@ const AccountList: React.FC<AccountListProps> = ({
           expandedRowRender,
           expandedRowKeys,
           onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as string[]),
-          rowExpandable: (record) => !!record.notes || !!record.proxy,
+          rowExpandable: (record) => !!record.notes || !!record.proxy || !!record.browserWindowName,
         }}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1400 }}
         pagination={{
           showSizeChanger: true,
           showQuickJumper: true,

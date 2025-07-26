@@ -7,9 +7,7 @@ import { logout } from '@/features/auth/authSlice';
 
 // Determine API URL based on environment
 // @ts-ignore - import.meta may not be available in test environment
-const baseUrl = (typeof window !== 'undefined' && window.__VITE_API_URL__) || 
-  (typeof process !== 'undefined' && process.env.VITE_API_URL) || 
-  'http://localhost:3000/api';
+const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5989/api';
 
 const baseQuery = fetchBaseQuery({
   baseUrl,
@@ -23,12 +21,12 @@ const baseQuery = fetchBaseQuery({
 });
 
 // Enhanced base query with automatic error handling
-const baseQueryWithReauth: BaseQueryFn<
-  string | FetchArgs,
-  unknown,
-  FetchBaseQueryError
-> = async (args, api, extraOptions) => {
-  let result = await baseQuery(args, api, extraOptions);
+const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
+  args,
+  api,
+  extraOptions,
+) => {
+  const result = await baseQuery(args, api, extraOptions);
 
   if (result.error?.status === 401) {
     // Clear auth state and redirect to login
@@ -53,3 +51,6 @@ export const baseApi = createApi({
   tagTypes: ['Auth', 'Account', 'Upload', 'Task', 'Dashboard', 'Monitoring', 'Settings'],
   endpoints: () => ({}),
 });
+
+// Export the resetApiState action from RTK Query util
+export const { resetApiState } = baseApi.util;

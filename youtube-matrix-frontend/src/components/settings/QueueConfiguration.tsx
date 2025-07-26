@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   Row,
@@ -10,7 +10,6 @@ import {
   TimePicker,
   Space,
   Button,
-  Tag,
   Progress,
   Statistic,
   Alert,
@@ -28,7 +27,7 @@ import {
   SettingOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { useAppSelector, useAppDispatch } from '@/hooks/redux';
+import { useAppDispatch } from '@/hooks/redux';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -43,7 +42,7 @@ interface QueueMetrics {
 
 const QueueConfiguration: React.FC = () => {
   const { t } = useTranslation();
-  const dispatch = useAppDispatch();
+  const _dispatch = useAppDispatch();
 
   // State
   const [concurrency, setConcurrency] = useState(3);

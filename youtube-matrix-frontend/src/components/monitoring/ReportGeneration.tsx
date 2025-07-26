@@ -10,11 +10,9 @@ import {
   Tag,
   Modal,
   Input,
-  Checkbox,
   Radio,
   message,
   Tooltip,
-  Divider,
   Alert,
   Spin,
 } from 'antd';
@@ -23,7 +21,6 @@ import {
   FilePdfOutlined,
   FileExcelOutlined,
   DownloadOutlined,
-  CalendarOutlined,
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -60,7 +57,7 @@ const ReportGeneration: React.FC = () => {
   const [scheduleForm] = Form.useForm();
   const [isScheduleModalVisible, setIsScheduleModalVisible] = useState(false);
   const [editingReport, setEditingReport] = useState<ScheduledReport | null>(null);
-  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+  const [_selectedAccounts, _setSelectedAccounts] = useState<string[]>([]);
 
   // API hooks
   const [generateReport, { isLoading: isGenerating }] = useGenerateReportMutation();
@@ -69,7 +66,11 @@ const ReportGeneration: React.FC = () => {
   const [deleteScheduledReport] = useDeleteScheduledReportMutation();
 
   // Handle instant report generation
-  const handleGenerateReport = async (values: any) => {
+  const handleGenerateReport = async (values: {
+    reportType: string;
+    dateRange: [dayjs.Dayjs, dayjs.Dayjs];
+    format: string;
+  }) => {
     try {
       const params = {
         type: values.reportType,
@@ -100,13 +101,20 @@ const ReportGeneration: React.FC = () => {
       window.URL.revokeObjectURL(url);
 
       message.success(t('monitoring.reportGeneratedSuccess'));
-    } catch (error) {
+    } catch {
       message.error(t('monitoring.reportGenerationFailed'));
     }
   };
 
   // Handle scheduled report creation
-  const handleCreateScheduledReport = async (values: any) => {
+  const handleCreateScheduledReport = async (values: {
+    name: string;
+    reportType: string;
+    schedule: string;
+    recipients: string;
+    timeRange: string;
+    format: string;
+  }) => {
     try {
       await createScheduledReport({
         name: values.name,
@@ -123,7 +131,7 @@ const ReportGeneration: React.FC = () => {
       message.success(t('monitoring.scheduledReportCreated'));
       setIsScheduleModalVisible(false);
       scheduleForm.resetFields();
-    } catch (error) {
+    } catch {
       message.error(t('monitoring.scheduledReportCreationFailed'));
     }
   };
@@ -137,7 +145,7 @@ const ReportGeneration: React.FC = () => {
         try {
           await deleteScheduledReport(id).unwrap();
           message.success(t('monitoring.reportDeleted'));
-        } catch (error) {
+        } catch {
           message.error(t('monitoring.reportDeletionFailed'));
         }
       },

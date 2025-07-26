@@ -84,7 +84,7 @@ export const showWarning = (message: string, description?: string): void => {
 };
 
 // Debounce function
-export const debounce = <T extends (...args: any[]) => any>(
+export const debounce = <T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number,
 ): ((...args: Parameters<T>) => void) => {
@@ -107,7 +107,7 @@ export const generateId = (): string => {
 };
 
 // Check if value is empty
-export const isEmpty = (value: any): boolean => {
+export const isEmpty = (value: unknown): boolean => {
   if (value == null) return true;
   if (typeof value === 'string') return value.trim().length === 0;
   if (Array.isArray(value)) return value.length === 0;

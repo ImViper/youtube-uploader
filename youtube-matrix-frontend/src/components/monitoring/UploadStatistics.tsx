@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Card, Row, Col, Select, DatePicker, Statistic, Space, Spin, Empty } from 'antd';
+import React, { useState, useRef } from 'react';
+import { Card, Row, Col, Select, Statistic, Spin, Empty } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  ClockCircleOutlined,
 } from '@ant-design/icons';
 import * as echarts from 'echarts';
 import { useTranslation } from 'react-i18next';
@@ -14,12 +13,11 @@ import { selectUploadStatistics, selectTimeRange } from '@/features/monitoring/m
 import { useGetUploadStatisticsQuery } from '@/features/monitoring/monitoringApi';
 import dayjs from 'dayjs';
 
-const { Option } = Select;
-const { RangePicker } = DatePicker;
+const { _Option } = Select;
 
 const UploadStatistics: React.FC = () => {
   const { t } = useTranslation();
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [_dateRange, _setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const volumeChartRef = useRef<HTMLDivElement>(null);
   const successRateChartRef = useRef<HTMLDivElement>(null);
   const failureChartRef = useRef<HTMLDivElement>(null);

@@ -96,8 +96,8 @@ const MainLayout: React.FC = () => {
   };
 
   const selectedKey =
-    (menuItems.find((item) => location.pathname.startsWith(item!.key as string))?.key as string) ||
-    '/dashboard';
+    (menuItems.find((item) => item && location.pathname.startsWith(item.key as string))
+      ?.key as string) || '/dashboard';
 
   return (
     <Layout className="min-h-screen">

@@ -1,4 +1,10 @@
-import { formatBytes, formatDuration, formatDate, getErrorMessage, debounce } from '@/utils/helpers';
+import {
+  formatBytes,
+  formatDuration,
+  formatDate,
+  getErrorMessage,
+  debounce,
+} from '@/utils/helpers';
 
 describe('Helper Functions', () => {
   describe('formatBytes', () => {
@@ -63,11 +69,13 @@ describe('Helper Functions', () => {
 
   describe('getErrorMessage', () => {
     it('extracts error message from axios error', () => {
-      const axiosError = new Error('Network error') as any;
+      const axiosError = new Error('Network error') as Error & {
+        response?: { data?: { message?: string } };
+      };
       axiosError.response = {
         data: {
-          message: 'Test error message'
-        }
+          message: 'Test error message',
+        },
       };
       expect(getErrorMessage(axiosError)).toBe('Test error message');
     });
