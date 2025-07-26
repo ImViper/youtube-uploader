@@ -2,6 +2,7 @@ import { getDatabase } from '../database/connection';
 import bcrypt from 'bcrypt';
 import pino from 'pino';
 import { Credentials } from '../types';
+import { getErrorMessage } from '../utils/error-utils';
 
 const logger = pino({
   name: 'account-manager',
@@ -70,8 +71,8 @@ export class AccountManager {
       
       return account;
 
-    } catch (error) {
-      if (error.code === '23505') { // Unique constraint violation
+    } catch (error: any) {
+      if (error?.code === '23505') { // Unique constraint violation
         throw new Error(`Account with email ${email} already exists`);
       }
       logger.error({ email, error }, 'Failed to add account');

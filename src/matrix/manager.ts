@@ -1,4 +1,5 @@
-import { Video, Credentials, MessageTransport, ProgressHandler } from '../types';
+import { Video, Credentials, MessageTransport } from '../types';
+import { ProgressHandler } from '../types/missing-types';
 import { BitBrowserManager } from '../bitbrowser/manager';
 import { BrowserPool } from '../bitbrowser/pool';
 import { AccountManager } from '../accounts/manager';

@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { getDatabase } from '../database/connection';
 import { getRedis } from '../redis/connection';
 import pino from 'pino';
+import { getErrorMessage } from '../utils/error-utils';
 
 const logger = pino({
   name: 'metrics-collector',
@@ -416,7 +417,7 @@ export class MetricsCollector extends EventEmitter {
         service: 'database',
         status: 'unhealthy',
         message: 'Database connection failed',
-        details: { error: error.message }
+        details: { error: getErrorMessage(error) }
       });
     }
 
@@ -432,7 +433,7 @@ export class MetricsCollector extends EventEmitter {
         service: 'redis',
         status: 'unhealthy',
         message: 'Redis connection failed',
-        details: { error: error.message }
+        details: { error: getErrorMessage(error) }
       });
     }
 

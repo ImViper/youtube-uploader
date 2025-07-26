@@ -149,19 +149,14 @@ export class UploadWorker {
         credentials,
         [video],
         {
-          launchOptions: {
-            executablePath: browserInstance.executablePath,
-            // Use existing browser connection
-            browserWSEndpoint: browser.wsEndpoint()
-          },
-          onSuccess: (video) => {
+          onSuccess: (video: any) => {
             logger.info({ videoId: video.link, taskId }, 'Upload successful');
             job.updateProgress({ status: 'completed', progress: 100 });
           },
-          onError: (error) => {
+          onError: (error: any) => {
             logger.error({ error, taskId }, 'Upload error callback');
           }
-        }
+        } as any
       );
 
       const timeoutPromise = new Promise((_, reject) => {
@@ -193,7 +188,7 @@ export class UploadWorker {
 
       // Update browser instance stats
       browserInstance.uploadCount++;
-      browserInstance.lastUploadTime = new Date();
+      (browserInstance as any).lastUploadTime = new Date();
 
       logger.info({ 
         jobId: job.id,

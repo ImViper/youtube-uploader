@@ -1,5 +1,6 @@
 import { Pool, PoolConfig, QueryResult } from 'pg';
 import pino from 'pino';
+import { getErrorMessage } from '../utils/error-utils';
 
 const logger = pino({
   name: 'database',
@@ -61,17 +62,17 @@ export class DatabaseConnection {
       logger.info('Successfully connected to database');
     } catch (error) {
       logger.error('Failed to connect to database', error);
-      throw new Error(`Database connection failed: ${error.message}`);
+      throw new Error(`Database connection failed: ${getErrorMessage(error)}`);
     }
   }
 
   /**
    * Execute a query with parameters
    */
-  async query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+  async query<T = any>(text: string, params?: any[]): Promise<QueryResult<any>> {
     const start = Date.now();
     try {
-      const result = await this.pool.query<T>(text, params);
+      const result = await this.pool.query(text, params);
       const duration = Date.now() - start;
       logger.debug({ text, duration, rows: result.rowCount }, 'Executed query');
       return result;

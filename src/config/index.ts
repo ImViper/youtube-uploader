@@ -183,8 +183,8 @@ export class ConfigManager {
       return validated;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        logger.error({ errors: error.errors }, 'Configuration validation failed');
-        throw new Error(`Invalid configuration: ${error.errors.map(e => e.message).join(', ')}`);
+        logger.error({ errors: error.issues }, 'Configuration validation failed');
+        throw new Error(`Invalid configuration: ${error.issues.map((e: any) => e.message).join(', ')}`);
       }
       throw error;
     }

@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { getErrorMessage } from '../utils/error-utils';
 
 const logger = pino({
   name: 'bitbrowser-api',
@@ -145,7 +146,7 @@ export class BitBrowserApiClient {
           attempt,
           maxRetries: this.maxRetries,
           delay,
-          error: error.message,
+          error: getErrorMessage(error),
         }, 'BitBrowser API request failed, retrying...');
 
         await this.sleep(delay);
@@ -155,7 +156,7 @@ export class BitBrowserApiClient {
       logger.error({
         endpoint,
         method,
-        error: error.message,
+        error: getErrorMessage(error),
         attempts: attempt,
       }, 'BitBrowser API request failed after all retries');
 
@@ -295,7 +296,7 @@ export class BitBrowserApiClient {
           return;
         }
       } catch (error) {
-        logger.debug({ windowId, error: error.message }, 'Browser not ready yet');
+        logger.debug({ windowId, error: getErrorMessage(error) }, 'Browser not ready yet');
       }
 
       await this.sleep(checkInterval);

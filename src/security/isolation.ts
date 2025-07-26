@@ -95,7 +95,7 @@ export class SecurityIsolationManager {
         const encryptedProxy = await this.encryptionService.encrypt(
           JSON.stringify(profileSecurity.proxy)
         );
-        profileSecurity.proxy = JSON.parse(encryptedProxy) as any;
+        profileSecurity.proxy = encryptedProxy as any;
       }
 
       // Store profile security settings

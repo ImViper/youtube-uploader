@@ -86,7 +86,7 @@ export class EncryptionService {
       const iv = crypto.randomBytes(16);
       
       // Create cipher
-      const cipher = crypto.createCipheriv(this.config.algorithm, key, iv);
+      const cipher = crypto.createCipheriv(this.config.algorithm as any, key, iv);
       
       // Encrypt data
       const encrypted = Buffer.concat([
@@ -95,7 +95,7 @@ export class EncryptionService {
       ]);
       
       // Get auth tag for GCM mode
-      const authTag = cipher.getAuthTag();
+      const authTag = (cipher as any).getAuthTag ? (cipher as any).getAuthTag() : Buffer.alloc(0);
       
       return {
         algorithm: this.config.algorithm,
@@ -124,8 +124,10 @@ export class EncryptionService {
       const encrypted = Buffer.from(encryptedData.encrypted, 'base64');
       
       // Create decipher
-      const decipher = crypto.createDecipheriv(encryptedData.algorithm, key, iv);
-      decipher.setAuthTag(authTag);
+      const decipher = crypto.createDecipheriv(encryptedData.algorithm as any, key, iv);
+      if ((decipher as any).setAuthTag && authTag.length > 0) {
+        (decipher as any).setAuthTag(authTag);
+      }
       
       // Decrypt data
       const decrypted = Buffer.concat([

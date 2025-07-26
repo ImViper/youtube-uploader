@@ -1,4 +1,4 @@
-import { Queue, Worker, QueueEvents, Job, QueueScheduler } from 'bullmq';
+import { Queue, Worker, QueueEvents, Job } from 'bullmq';
 import { getRedis } from '../redis/connection';
 import { Video } from '../types';
 import pino from 'pino';
@@ -47,7 +47,7 @@ export interface QueueStats {
 export class QueueManager extends EventEmitter {
   private uploadQueue: Queue<UploadTask>;
   private queueEvents: QueueEvents;
-  private queueScheduler: QueueScheduler;
+  // Note: QueueScheduler has been removed in BullMQ v5
   private config: QueueManagerConfig;
   private redis = getRedis();
   private rateLimitPrefix = 'queue:ratelimit:';
@@ -83,8 +83,8 @@ export class QueueManager extends EventEmitter {
     // Create queue events for monitoring
     this.queueEvents = new QueueEvents(queueName, { connection });
     
-    // Create queue scheduler for delayed jobs
-    this.queueScheduler = new QueueScheduler(queueName, { connection });
+    // Note: QueueScheduler has been removed in BullMQ v5
+    // Delayed jobs are now handled automatically by the Queue
 
     this.setupEventListeners();
 
@@ -200,7 +200,7 @@ export class QueueManager extends EventEmitter {
     if (!this.config.rateLimit) return true;
 
     const key = `${this.rateLimitPrefix}global`;
-    const current = await this.redis.incr(key);
+    const current = await this.redis.getClient().incr(key);
     
     if (current === 1) {
       await this.redis.expire(key, Math.ceil(this.config.rateLimit.duration / 1000));
@@ -218,7 +218,7 @@ export class QueueManager extends EventEmitter {
     const duration = 3600000; // 1 hour in ms
 
     const key = `${this.accountRateLimitPrefix}${accountId}`;
-    const current = await this.redis.incr(key);
+    const current = await this.redis.getClient().incr(key);
     
     if (current === 1) {
       await this.redis.expire(key, Math.ceil(duration / 1000));
@@ -359,8 +359,7 @@ export class QueueManager extends EventEmitter {
 
     await Promise.all([
       this.uploadQueue.close(),
-      this.queueEvents.close(),
-      this.queueScheduler.close()
+      this.queueEvents.close()
     ]);
 
     this.removeAllListeners();

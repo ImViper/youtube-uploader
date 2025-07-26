@@ -1,6 +1,7 @@
 import { getDatabase } from './connection';
 import path from 'path';
 import pino from 'pino';
+import { getErrorMessage } from '../utils/error-utils';
 
 const logger = pino({
   name: 'db-init',
@@ -117,7 +118,7 @@ if (require.main === module) {
       }
       process.exit(0);
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('Error:', getErrorMessage(error));
       process.exit(1);
     }
   }

@@ -26,6 +26,7 @@ export function getBullMQConnection(): ConnectionOptions {
  * Default queue options for upload tasks
  */
 export const defaultQueueOptions: QueueOptions = {
+  connection: getBullMQConnection(),
   defaultJobOptions: {
     attempts: 3,
     backoff: {
@@ -51,11 +52,8 @@ export function getRateLimitedQueueOptions(maxJobs: number, duration: number): Q
     defaultJobOptions: {
       ...defaultQueueOptions.defaultJobOptions,
     },
-    // Rate limiter configuration
-    limiter: {
-      max: maxJobs,
-      duration: duration,
-    },
+    // Note: Rate limiting should be implemented at the application level
+    // BullMQ v5 doesn't have built-in limiter option
   };
 }
 
@@ -63,6 +61,7 @@ export function getRateLimitedQueueOptions(maxJobs: number, duration: number): Q
  * Default worker options
  */
 export const defaultWorkerOptions: WorkerOptions = {
+  connection: getBullMQConnection(),
   concurrency: parseInt(process.env.WORKER_CONCURRENCY || '5'),
   lockDuration: 30000, // 30 seconds
   stalledInterval: 30000,

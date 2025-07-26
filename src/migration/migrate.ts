@@ -1,4 +1,5 @@
-import { readFile, writeFile, existsSync } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { getDatabase } from '../database/connection';
 import { AccountManager } from '../accounts/manager';

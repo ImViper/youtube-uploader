@@ -1,5 +1,6 @@
 import Redis, { RedisOptions } from 'ioredis';
 import pino from 'pino';
+import { getErrorMessage } from '../utils/error-utils';
 
 const logger = pino({
   name: 'redis',
@@ -124,7 +125,7 @@ export class RedisConnection {
       logger.info('Successfully connected to Redis');
     } catch (error) {
       logger.error('Failed to connect to Redis', error);
-      throw new Error(`Redis connection failed: ${error.message}`);
+      throw new Error(`Redis connection failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -146,7 +147,7 @@ export class RedisConnection {
    */
   async getInfo(section?: string): Promise<string> {
     try {
-      return await this.client.info(section);
+      return section ? await this.client.info(section) : await this.client.info();
     } catch (error) {
       logger.error('Failed to get Redis info', error);
       throw error;

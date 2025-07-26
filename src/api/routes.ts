@@ -244,7 +244,13 @@ export function createApiRoutes(config: ApiConfig): Router {
         priority,
         accountId,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
-        metadata
+        metadata,
+        // Default message transport handlers
+        error: (msg: any) => logger.error(msg),
+        warn: (msg: any) => logger.warn(msg),
+        log: (msg: any) => logger.info(msg),
+        debug: (msg: any) => logger.debug(msg),
+        userAction: (msg: string) => logger.info({ action: msg }, 'User action')
       });
       
       res.status(201).json(result);
@@ -271,7 +277,13 @@ export function createApiRoutes(config: ApiConfig): Router {
         priority,
         accountId,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
-        metadata
+        metadata,
+        // Default message transport handlers
+        error: (msg: any) => logger.error(msg),
+        warn: (msg: any) => logger.warn(msg),
+        log: (msg: any) => logger.info(msg),
+        debug: (msg: any) => logger.debug(msg),
+        userAction: (msg: string) => logger.info({ action: msg }, 'User action')
       });
       
       res.status(201).json(results);
