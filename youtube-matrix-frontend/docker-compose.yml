@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    container_name: youtube-matrix-frontend
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+      - API_URL=${API_URL:-http://backend:4000}
+      - WEBSOCKET_URL=${WEBSOCKET_URL:-http://backend:4000}
+    networks:
+      - youtube-matrix-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Development environment with hot reload
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: youtube-matrix-frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:4000/api}
+      - VITE_WEBSOCKET_URL=${VITE_WEBSOCKET_URL:-http://localhost:4000}
+    networks:
+      - youtube-matrix-network
+    command: npm run dev
+
+networks:
+  youtube-matrix-network:
+    driver: bridge
+    name: youtube-matrix-network
+
+volumes:
+  node_modules:

@@ -1,0 +1,137 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: youtube-matrix-frontend
+  namespace: youtube-matrix
+  labels:
+    app: youtube-matrix-frontend
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: youtube-matrix-frontend
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: youtube-matrix-frontend
+        version: v1
+    spec:
+      containers:
+      - name: frontend
+        image: youtube-matrix-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: frontend-config
+              key: api-url
+        - name: WEBSOCKET_URL
+          valueFrom:
+            configMapKeyRef:
+              name: frontend-config
+              key: websocket-url
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-pid
+          mountPath: /var/run
+      volumes:
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-pid
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - youtube-matrix-frontend
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: youtube-matrix-frontend
+  namespace: youtube-matrix
+  labels:
+    app: youtube-matrix-frontend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: youtube-matrix-frontend
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: youtube-matrix
+data:
+  api-url: "http://youtube-matrix-backend:4000"
+  websocket-url: "http://youtube-matrix-backend:4000"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: youtube-matrix-frontend
+  namespace: youtube-matrix
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: youtube-matrix-frontend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

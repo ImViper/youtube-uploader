@@ -1,0 +1,32 @@
+{
+  "active": {
+    "id": "acc-1",
+    "username": "youtube_account_1",
+    "email": "account1@youtube.com",
+    "status": "active",
+    "healthScore": 95,
+    "lastLogin": "2023-12-01T10:00:00Z",
+    "uploadsCount": 150,
+    "failureRate": 2.5
+  },
+  "warning": {
+    "id": "acc-2",
+    "username": "youtube_account_2",
+    "email": "account2@youtube.com",
+    "status": "warning",
+    "healthScore": 75,
+    "lastLogin": "2023-11-28T10:00:00Z",
+    "uploadsCount": 80,
+    "failureRate": 8.5
+  },
+  "error": {
+    "id": "acc-3",
+    "username": "youtube_account_3",
+    "email": "account3@youtube.com",
+    "status": "error",
+    "healthScore": 45,
+    "lastLogin": "2023-11-20T10:00:00Z",
+    "uploadsCount": 200,
+    "failureRate": 15.0
+  }
+}

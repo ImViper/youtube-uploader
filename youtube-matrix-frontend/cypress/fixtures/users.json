@@ -1,0 +1,18 @@
+{
+  "admin": {
+    "id": "1",
+    "username": "admin",
+    "email": "admin@example.com",
+    "password": "admin123",
+    "roles": ["admin"],
+    "permissions": ["*"]
+  },
+  "user": {
+    "id": "2",
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "password123",
+    "roles": ["user"],
+    "permissions": ["upload:view", "upload:create", "account:view"]
+  }
+}
