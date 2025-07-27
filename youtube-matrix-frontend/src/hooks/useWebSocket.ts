@@ -95,8 +95,11 @@ export const useWebSocket = () => {
   );
 
   useEffect(() => {
-    // Connect to WebSocket
-    websocketService.connect();
+    // Connect to WebSocket only if token exists
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      websocketService.connect();
+    }
 
     // Setup event handlers
     const handlers = new Map<string, (...args: any[]) => void>([

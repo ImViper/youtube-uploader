@@ -6,7 +6,6 @@ import { notification } from 'antd';
 import { logout } from '@/features/auth/authSlice';
 
 // Determine API URL based on environment
-// @ts-ignore - import.meta may not be available in test environment
 const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5989/api';
 
 const baseQuery = fetchBaseQuery({
@@ -34,7 +33,7 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
     window.location.href = '/login';
   }
 
-  if (result.error && typeof window !== 'undefined' && process.env.NODE_ENV !== 'test') {
+  if (result.error && typeof window !== 'undefined' && import.meta.env.MODE !== 'test') {
     const error = result.error as FetchBaseQueryError & { data?: ErrorResponse };
     notification.error({
       message: 'API Error',

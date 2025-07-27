@@ -15,7 +15,7 @@ export const handlers = [
   }),
 
   // Accounts endpoints
-  http.get('/api/accounts', () => {
+  http.get('/api/v1/accounts', () => {
     return HttpResponse.json([
       {
         id: '1',
@@ -26,8 +26,8 @@ export const handlers = [
     ]);
   }),
 
-  // Uploads endpoints
-  http.get('/api/uploads', () => {
+  // Tasks endpoints (uploads are now tasks)
+  http.get('/api/v1/tasks', () => {
     return HttpResponse.json([
       {
         id: '1',
@@ -38,17 +38,20 @@ export const handlers = [
     ]);
   }),
 
-  http.post('/api/uploads', () => {
+  http.post('/api/v1/tasks', () => {
     return HttpResponse.json({
       id: '2',
-      title: 'New Upload',
+      type: 'upload',
+      video: {
+        title: 'New Upload',
+      },
       status: 'pending',
       progress: 0,
     });
   }),
 
   // Settings endpoints
-  http.get('/api/settings', () => {
+  http.get('/api/v1/settings', () => {
     return HttpResponse.json({
       uploadDefaults: {
         privacy: 'private',

@@ -26,7 +26,7 @@ const { Option } = Select;
 const PerformanceDashboard: React.FC = () => {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
-  const [_isFullscreen, _setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const timeRange = useAppSelector(selectTimeRange);

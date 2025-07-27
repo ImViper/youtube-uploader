@@ -4,6 +4,7 @@ import { MetricsCollector } from '../../monitoring/metrics';
 import { createMatrixRoutes } from '../matrix';
 import { createAccountRoutes } from '../account';
 import { createTaskRoutes } from '../task';
+import { createDashboardRoutes } from '../dashboard';
 
 export interface ApiV1Config {
   matrixManager: MatrixManager;
@@ -18,6 +19,7 @@ export function createApiV1Routes(config: ApiV1Config): Router {
   router.use('/matrices', createMatrixRoutes(matrixManager));
   router.use('/accounts', createAccountRoutes(matrixManager.getAccountManager()));
   router.use('/tasks', createTaskRoutes(matrixManager.getQueueManager()));
+  router.use('/dashboard', createDashboardRoutes({ matrixManager, metricsCollector }));
 
   // Health check endpoint
   router.get('/health', async (req, res) => {

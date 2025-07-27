@@ -1,4 +1,4 @@
-import { ComponentType } from 'react';
+import type { ComponentType } from 'react';
 import { lazyLoadWithRetry } from './lazyLoad';
 
 /**
@@ -17,20 +17,20 @@ export interface RouteConfig {
  */
 export const lazyRoutes = {
   // Main pages
-  Dashboard: lazyLoadWithRetry(() => import('@/pages/Dashboard')),
-  Accounts: lazyLoadWithRetry(() => import('@/pages/Accounts')),
-  Upload: lazyLoadWithRetry(() => import('@/pages/Upload')),
-  Tasks: lazyLoadWithRetry(() => import('@/pages/Tasks')),
-  Monitoring: lazyLoadWithRetry(() => import('@/pages/Monitoring')),
-  Settings: lazyLoadWithRetry(() => import('@/pages/Settings')),
+  Dashboard: lazyLoadWithRetry(() => import('@/pages/DashboardPage')),
+  Accounts: lazyLoadWithRetry(() => import('@/pages/AccountsPage')),
+  Upload: lazyLoadWithRetry(() => import('@/pages/UploadsPage')),
+  Tasks: lazyLoadWithRetry(() => import('@/pages/TasksPage')),
+  Monitoring: lazyLoadWithRetry(() => import('@/pages/MonitoringPage')),
+  Settings: lazyLoadWithRetry(() => import('@/pages/SettingsPage')),
 
   // Auth pages
-  Login: lazyLoadWithRetry(() => import('@/pages/Login')),
+  Login: lazyLoadWithRetry(() => import('@/pages/LoginPage')),
 
   // Error pages
-  NotFound: lazyLoadWithRetry(() => import('@/pages/404')),
-  ServerError: lazyLoadWithRetry(() => import('@/pages/500')),
-  Forbidden: lazyLoadWithRetry(() => import('@/pages/403')),
+  NotFound: lazyLoadWithRetry(() => import('@/pages/NotFoundPage')),
+  ServerError: lazyLoadWithRetry(() => import('@/pages/NotFoundPage')), // 使用同一个错误页面
+  Forbidden: lazyLoadWithRetry(() => import('@/pages/NotFoundPage')), // 使用同一个错误页面
 };
 
 /**
@@ -38,12 +38,12 @@ export const lazyRoutes = {
  */
 export const preloadCriticalRoutes = () => {
   // Preload dashboard as it's likely the first page users will see
-  import('@/pages/Dashboard');
+  import('@/pages/DashboardPage');
 
   // Preload other critical routes after a delay
   setTimeout(() => {
-    import('@/pages/Accounts');
-    import('@/pages/Upload');
+    import('@/pages/AccountsPage');
+    import('@/pages/UploadsPage');
   }, 2000);
 };
 
@@ -112,12 +112,12 @@ export const lazyComponents = {
   UploadStatistics: lazyLoadWithRetry(() => import('@/components/monitoring/UploadStatistics')),
 
   // Forms
-  AccountForm: lazyLoadWithRetry(() => import('@/components/accounts/AccountForm')),
-  UploadForm: lazyLoadWithRetry(() => import('@/components/upload/UploadForm')),
+  AccountForm: lazyLoadWithRetry(() => import('@/features/accounts/components/AccountFormModal')),
+  VideoDropzone: lazyLoadWithRetry(() => import('@/features/uploads/components/VideoDropzone')),
 
   // Tables
-  AccountTable: lazyLoadWithRetry(() => import('@/components/accounts/AccountTable')),
-  TaskTable: lazyLoadWithRetry(() => import('@/components/tasks/TaskTable')),
+  AccountList: lazyLoadWithRetry(() => import('@/features/accounts/components/AccountList')),
+  TaskList: lazyLoadWithRetry(() => import('@/features/tasks/components/TaskList')),
 };
 
 /**

@@ -18,7 +18,7 @@ import {
 import { useGetAccountsQuery } from '@/features/accounts/accountsApi';
 import { setFilter } from '@/features/tasks/tasksSlice';
 import { TaskList, TaskDetailModal, TaskFilters } from '@/features/tasks/components';
-import type { Task } from '@/features/tasks/tasksSlice';
+import type { Task } from '@/features/tasks/tasksApi';
 
 const TasksPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -29,8 +29,8 @@ const TasksPage: React.FC = () => {
 
   // API Queries
   const { data, isLoading, refetch } = useGetTasksQuery({
-    status: filter.status !== 'all' ? filter.status : undefined,
-    type: filter.type !== 'all' ? filter.type : undefined,
+    status: filter.status !== 'all' ? (filter.status as any) : undefined,
+    type: filter.type !== 'all' ? (filter.type as any) : undefined,
     accountId: filter.accountId || undefined,
     dateFrom: filter.dateRange.start || undefined,
     dateTo: filter.dateRange.end || undefined,
@@ -55,11 +55,11 @@ const TasksPage: React.FC = () => {
   // 任务统计
   const stats = {
     total: tasks.length,
-    pending: tasks.filter((t) => t.status === 'pending').length,
-    running: tasks.filter((t) => t.status === 'running').length,
+    pending: tasks.filter((t) => t.status === 'pending' || t.status === 'queued').length,
+    running: tasks.filter((t) => t.status === 'processing').length,
     completed: tasks.filter((t) => t.status === 'completed').length,
     failed: tasks.filter((t) => t.status === 'failed').length,
-    paused: tasks.filter((t) => t.status === 'paused').length,
+    paused: 0, // API 中没有 paused 状态
     avgCompletionTime:
       tasks
         .filter((t) => t.status === 'completed' && t.completedAt && t.startedAt)
@@ -88,7 +88,7 @@ const TasksPage: React.FC = () => {
 
   const handleRetryTask = async (id: string, options?: any) => {
     try {
-      await retryTask({ id, options }).unwrap();
+      await retryTask(id).unwrap();
       refetch();
       setDetailModalVisible(false);
     } catch (error) {
@@ -98,7 +98,7 @@ const TasksPage: React.FC = () => {
 
   const handlePauseTask = async (id: string) => {
     try {
-      await pauseTask(id);
+      await pauseTask(id).unwrap();
       refetch();
     } catch (error) {
       // 错误已由 RTK Query 处理
@@ -107,7 +107,7 @@ const TasksPage: React.FC = () => {
 
   const handleResumeTask = async (id: string) => {
     try {
-      await resumeTask(id);
+      await resumeTask(id).unwrap();
       refetch();
     } catch (error) {
       // 错误已由 RTK Query 处理
@@ -119,17 +119,26 @@ const TasksPage: React.FC = () => {
   };
 
   const handleTabChange = (key: string) => {
-    setActiveTab(key as Task['status'] | 'all');
+    setActiveTab(key as any);
     if (key !== 'all') {
-      handleFilterChange({ status: key as Task['status'] });
+      handleFilterChange({ status: key as any });
     } else {
-      handleFilterChange({ status: undefined });
+      handleFilterChange({ status: 'all' });
     }
   };
 
-  const getTasksByTab = (status: Task['status'] | 'all') => {
+  const getTasksByTab = (status: string) => {
     if (status === 'all') return tasks;
-    return tasks.filter((t) => t.status === status);
+    // Map UI status to API status
+    const statusMap: Record<string, Task['status'][]> = {
+      'pending': ['pending', 'queued'],
+      'running': ['processing'],
+      'completed': ['completed'],
+      'failed': ['failed'],
+      'cancelled': ['cancelled']
+    };
+    const mappedStatuses = statusMap[status] || [status as Task['status']];
+    return tasks.filter((t) => mappedStatuses.includes(t.status));
   };
 
   return (
@@ -187,107 +196,112 @@ const TasksPage: React.FC = () => {
 
       {/* 任务列表 */}
       <Card>
-        <Tabs activeKey={activeTab} onChange={handleTabChange}>
-          <Tabs.TabPane
-            tab={
-              <span>
-                全部
-                <span style={{ marginLeft: 8, color: '#999' }}>({stats.total})</span>
-              </span>
-            }
-            key="all"
-          >
-            <TaskList
-              tasks={getTasksByTab('all')}
-              loading={isLoading}
-              onView={handleViewTask}
-              onRetry={handleRetryTask}
-              onCancel={handleCancelTask}
-              onPause={handlePauseTask}
-              onResume={handleResumeTask}
-            />
-          </Tabs.TabPane>
-
-          <Tabs.TabPane
-            tab={
-              <span>
-                <ClockCircleOutlined /> 等待中
-                <span style={{ marginLeft: 8, color: '#999' }}>({stats.pending})</span>
-              </span>
-            }
-            key="pending"
-          >
-            <TaskList
-              tasks={getTasksByTab('pending')}
-              loading={isLoading}
-              onView={handleViewTask}
-              onRetry={handleRetryTask}
-              onCancel={handleCancelTask}
-              onPause={handlePauseTask}
-              onResume={handleResumeTask}
-            />
-          </Tabs.TabPane>
-
-          <Tabs.TabPane
-            tab={
-              <span>
-                <SyncOutlined spin /> 运行中
-                <span style={{ marginLeft: 8, color: '#999' }}>({stats.running})</span>
-              </span>
-            }
-            key="running"
-          >
-            <TaskList
-              tasks={getTasksByTab('running')}
-              loading={isLoading}
-              onView={handleViewTask}
-              onRetry={handleRetryTask}
-              onCancel={handleCancelTask}
-              onPause={handlePauseTask}
-              onResume={handleResumeTask}
-            />
-          </Tabs.TabPane>
-
-          <Tabs.TabPane
-            tab={
-              <span>
-                <CheckCircleOutlined /> 已完成
-                <span style={{ marginLeft: 8, color: '#999' }}>({stats.completed})</span>
-              </span>
-            }
-            key="completed"
-          >
-            <TaskList
-              tasks={getTasksByTab('completed')}
-              loading={isLoading}
-              onView={handleViewTask}
-              onRetry={handleRetryTask}
-              onCancel={handleCancelTask}
-              onPause={handlePauseTask}
-              onResume={handleResumeTask}
-            />
-          </Tabs.TabPane>
-
-          <Tabs.TabPane
-            tab={
-              <span>
-                <ExclamationCircleOutlined /> 失败
-                <span style={{ marginLeft: 8, color: '#999' }}>({stats.failed})</span>
-              </span>
-            }
-            key="failed"
-          >
-            <TaskList
-              tasks={getTasksByTab('failed')}
-              loading={isLoading}
-              onView={handleViewTask}
-              onRetry={handleRetryTask}
-              onCancel={handleCancelTask}
-              onPause={handlePauseTask}
-              onResume={handleResumeTask}
-            />
-          </Tabs.TabPane>
-        </Tabs>
+        <Tabs
+          activeKey={activeTab}
+          onChange={handleTabChange}
+          items={[
+            {
+              key: 'all',
+              label: (
+                <span>
+                  全部
+                  <span style={{ marginLeft: 8, color: '#999' }}>({stats.total})</span>
+                </span>
+              ),
+              children: (
+                <TaskList
+                  tasks={getTasksByTab('all')}
+                  loading={isLoading}
+                  onView={handleViewTask}
+                  onRetry={handleRetryTask}
+                  onCancel={handleCancelTask}
+                  onPause={handlePauseTask}
+                  onResume={handleResumeTask}
+                />
+              ),
+            },
+            {
+              key: 'pending',
+              label: (
+                <span>
+                  <ClockCircleOutlined /> 等待中
+                  <span style={{ marginLeft: 8, color: '#999' }}>({stats.pending})</span>
+                </span>
+              ),
+              children: (
+                <TaskList
+                  tasks={getTasksByTab('pending')}
+                  loading={isLoading}
+                  onView={handleViewTask}
+                  onRetry={handleRetryTask}
+                  onCancel={handleCancelTask}
+                  onPause={handlePauseTask}
+                  onResume={handleResumeTask}
+                />
+              ),
+            },
+            {
+              key: 'running',
+              label: (
+                <span>
+                  <SyncOutlined spin /> 运行中
+                  <span style={{ marginLeft: 8, color: '#999' }}>({stats.running})</span>
+                </span>
+              ),
+              children: (
+                <TaskList
+                  tasks={getTasksByTab('running')}
+                  loading={isLoading}
+                  onView={handleViewTask}
+                  onRetry={handleRetryTask}
+                  onCancel={handleCancelTask}
+                  onPause={handlePauseTask}
+                  onResume={handleResumeTask}
+                />
+              ),
+            },
+            {
+              key: 'completed',
+              label: (
+                <span>
+                  <CheckCircleOutlined /> 已完成
+                  <span style={{ marginLeft: 8, color: '#999' }}>({stats.completed})</span>
+                </span>
+              ),
+              children: (
+                <TaskList
+                  tasks={getTasksByTab('completed')}
+                  loading={isLoading}
+                  onView={handleViewTask}
+                  onRetry={handleRetryTask}
+                  onCancel={handleCancelTask}
+                  onPause={handlePauseTask}
+                  onResume={handleResumeTask}
+                />
+              ),
+            },
+            {
+              key: 'failed',
+              label: (
+                <span>
+                  <ExclamationCircleOutlined /> 失败
+                  <span style={{ marginLeft: 8, color: '#999' }}>({stats.failed})</span>
+                </span>
+              ),
+              children: (
+                <TaskList
+                  tasks={getTasksByTab('failed')}
+                  loading={isLoading}
+                  onView={handleViewTask}
+                  onRetry={handleRetryTask}
+                  onCancel={handleCancelTask}
+                  onPause={handlePauseTask}
+                  onResume={handleResumeTask}
+                />
+              ),
+            },
+          ]}
+        />
       </Card>
 
       {/* 任务详情模态框 */}

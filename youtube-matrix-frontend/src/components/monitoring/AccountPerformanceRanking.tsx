@@ -15,8 +15,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '@/hooks/redux';
 import { selectUploadStatistics, selectTimeRange } from '@/features/monitoring/monitoringSlice';
 import { useGetUploadStatisticsQuery } from '@/features/monitoring/monitoringApi';
-import type { ColumnsType } from 'antd/es/table';
-
 const { Option } = Select;
 
 interface AccountPerformanceData {
@@ -100,13 +98,13 @@ const AccountPerformanceRanking: React.FC = () => {
     return '#ff4d4f';
   };
 
-  const columns: ColumnsType<AccountPerformanceData> = [
+  const columns = [
     {
       title: t('monitoring.rank'),
       dataIndex: 'rank',
       key: 'rank',
       width: 80,
-      fixed: 'left',
+      fixed: 'left' as const,
       render: (rank: number) => (
         <Space>
           {getRankIcon(rank)}
@@ -119,7 +117,7 @@ const AccountPerformanceRanking: React.FC = () => {
       dataIndex: 'username',
       key: 'username',
       width: 200,
-      render: (username: string, record) => (
+      render: (username: string, record: AccountPerformanceData) => (
         <Space>
           <Avatar src={record.avatar} icon={<UserOutlined />} />
           <div>
@@ -135,7 +133,7 @@ const AccountPerformanceRanking: React.FC = () => {
       title: t('monitoring.totalUploads'),
       dataIndex: 'uploadsCount',
       key: 'uploadsCount',
-      sorter: (a, b) => a.uploadsCount - b.uploadsCount,
+      sorter: (a: AccountPerformanceData, b: AccountPerformanceData) => a.uploadsCount - b.uploadsCount,
       render: (count: number) => <span className="font-medium">{count.toLocaleString()}</span>,
     },
     {
@@ -155,7 +153,7 @@ const AccountPerformanceRanking: React.FC = () => {
       dataIndex: 'successRate',
       key: 'successRate',
       width: 200,
-      sorter: (a, b) => a.successRate - b.successRate,
+      sorter: (a: AccountPerformanceData, b: AccountPerformanceData) => a.successRate - b.successRate,
       render: (rate: number) => (
         <div>
           <Progress
@@ -171,7 +169,7 @@ const AccountPerformanceRanking: React.FC = () => {
       title: t('monitoring.avgUploadTime'),
       dataIndex: 'averageUploadTime',
       key: 'averageUploadTime',
-      sorter: (a, b) => a.averageUploadTime - b.averageUploadTime,
+      sorter: (a: AccountPerformanceData, b: AccountPerformanceData) => a.averageUploadTime - b.averageUploadTime,
       render: (time: number) => {
         const minutes = Math.floor(time / 60);
         const seconds = time % 60;
@@ -185,9 +183,9 @@ const AccountPerformanceRanking: React.FC = () => {
     {
       title: t('monitoring.actions'),
       key: 'actions',
-      fixed: 'right',
+      fixed: 'right' as const,
       width: 100,
-      render: (_, record) => (
+      render: (_: any, record: AccountPerformanceData) => (
         <Button type="link" size="small" onClick={() => navigate(`/accounts/${record.accountId}`)}>
           {t('common.viewDetails')}
         </Button>
@@ -248,7 +246,7 @@ const AccountPerformanceRanking: React.FC = () => {
             <Card
               key={account.accountId}
               className={`text-center ${index === 0 ? 'border-yellow-400 border-2' : ''}`}
-              bodyStyle={{ padding: '20px' }}
+              styles={{ body: { padding: '20px' } }}
             >
               <div className="mb-3">{getRankIcon(index + 1)}</div>
               <Avatar size={64} src={account.avatar} icon={<UserOutlined />} className="mb-3" />

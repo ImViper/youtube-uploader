@@ -6,8 +6,8 @@ This document describes the API endpoints used by the YouTube Matrix Frontend ap
 
 ### API Base URL
 ```
-Development: http://localhost:4000/api
-Production: https://api.yourdomain.com
+Development: http://localhost:4000/api/v1
+Production: https://api.yourdomain.com/api/v1
 ```
 
 ### Authentication
@@ -101,11 +101,11 @@ Request:
 }
 ```
 
-## Upload Endpoints
+## Task Endpoints (formerly Upload Endpoints)
 
-### List Uploads
+### List Tasks
 ```http
-GET /uploads
+GET /v1/tasks
 ```
 
 Query Parameters:
@@ -142,14 +142,14 @@ Response:
 }
 ```
 
-### Get Upload Details
+### Get Task Details
 ```http
-GET /uploads/:id
+GET /v1/tasks/:id
 ```
 
-### Create Upload
+### Create Task
 ```http
-POST /uploads
+POST /v1/tasks
 ```
 
 Request (multipart/form-data):
@@ -165,9 +165,9 @@ video: File (required)
 scheduledTime: string (ISO 8601)
 ```
 
-### Update Upload
+### Update Task
 ```http
-PATCH /uploads/:id
+PATCH /v1/tasks/:id
 ```
 
 Request:
@@ -180,19 +180,19 @@ Request:
 }
 ```
 
-### Delete Upload
+### Delete Task
 ```http
-DELETE /uploads/:id
+DELETE /v1/tasks/:id
 ```
 
-### Retry Failed Upload
+### Retry Failed Task
 ```http
-POST /uploads/:id/retry
+POST /v1/tasks/:id/retry
 ```
 
-### Bulk Upload
+### Bulk Task Creation
 ```http
-POST /uploads/bulk
+POST /v1/tasks/bulk
 ```
 
 Request (multipart/form-data):
@@ -233,7 +233,7 @@ socket.on('upload:complete', (data) => {
 
 ### List Accounts
 ```http
-GET /accounts
+GET /v1/accounts
 ```
 
 Query Parameters:
@@ -268,12 +268,12 @@ Response:
 
 ### Get Account Details
 ```http
-GET /accounts/:id
+GET /v1/accounts/:id
 ```
 
 ### Create Account
 ```http
-POST /accounts
+POST /v1/accounts
 ```
 
 Request:
@@ -290,17 +290,17 @@ Request:
 
 ### Update Account
 ```http
-PATCH /accounts/:id
+PATCH /v1/accounts/:id
 ```
 
 ### Delete Account
 ```http
-DELETE /accounts/:id
+DELETE /v1/accounts/:id
 ```
 
 ### Verify Account
 ```http
-POST /accounts/:id/verify
+POST /v1/accounts/:id/verify
 ```
 
 Request:
@@ -312,7 +312,7 @@ Request:
 
 ### Account Metrics
 ```http
-GET /accounts/:id/metrics
+GET /v1/accounts/:id/metrics
 ```
 
 Query Parameters:
@@ -347,7 +347,7 @@ Response:
 
 ### Bulk Account Operations
 ```http
-POST /accounts/bulk
+POST /v1/accounts/bulk
 ```
 
 Request:
@@ -363,7 +363,7 @@ Request:
 
 ### Get Settings
 ```http
-GET /settings
+GET /v1/settings
 ```
 
 Response:
@@ -417,7 +417,7 @@ Response:
 
 ### Update Settings
 ```http
-PATCH /settings
+PATCH /v1/settings
 ```
 
 Request:
@@ -432,12 +432,12 @@ Request:
 
 ### Export Settings
 ```http
-POST /settings/export
+POST /v1/settings/export
 ```
 
 ### Import Settings
 ```http
-POST /settings/import
+POST /v1/settings/import
 ```
 
 Request (multipart/form-data):
@@ -449,7 +449,7 @@ file: File (JSON settings file)
 
 ### System Performance
 ```http
-GET /monitoring/performance
+GET /v1/monitoring/performance
 ```
 
 Response:
@@ -484,7 +484,7 @@ Response:
 
 ### Upload Statistics
 ```http
-GET /monitoring/uploads
+GET /v1/monitoring/uploads
 ```
 
 Query Parameters:
@@ -492,12 +492,12 @@ Query Parameters:
 
 ### Account Health
 ```http
-GET /monitoring/accounts
+GET /v1/monitoring/accounts
 ```
 
 ### Error Logs
 ```http
-GET /monitoring/errors
+GET /v1/monitoring/errors
 ```
 
 Query Parameters:
@@ -508,7 +508,7 @@ Query Parameters:
 
 ### Generate Report
 ```http
-POST /monitoring/reports/generate
+POST /v1/monitoring/reports/generate
 ```
 
 Request:
@@ -527,12 +527,12 @@ Request:
 
 ### Queue Status
 ```http
-GET /queue/status
+GET /v1/queue/status
 ```
 
 ### Queue Jobs
 ```http
-GET /queue/jobs
+GET /v1/queue/jobs
 ```
 
 Query Parameters:
@@ -541,29 +541,29 @@ Query Parameters:
 
 ### Pause Queue
 ```http
-POST /queue/pause
+POST /v1/queue/pause
 ```
 
 ### Resume Queue
 ```http
-POST /queue/resume
+POST /v1/queue/resume
 ```
 
 ### Clear Failed Jobs
 ```http
-POST /queue/clear-failed
+POST /v1/queue/clear-failed
 ```
 
 ## Proxy Management
 
 ### List Proxies
 ```http
-GET /proxies
+GET /v1/proxies
 ```
 
 ### Test Proxy
 ```http
-POST /proxies/test
+POST /v1/proxies/test
 ```
 
 Request:

@@ -49,7 +49,7 @@ export const accountsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getAccounts: builder.query<PaginatedResponse<Account>, AccountsQueryParams>({
       query: (params) => ({
-        url: '/accounts',
+        url: '/v1/accounts',
         params,
       }),
       providesTags: (result) =>
@@ -62,13 +62,13 @@ export const accountsApi = baseApi.injectEndpoints({
     }),
 
     getAccount: builder.query<Account, string>({
-      query: (id) => `/accounts/${id}`,
+      query: (id) => `/v1/accounts/${id}`,
       providesTags: (_result, _error, id) => [{ type: 'Account', id }],
     }),
 
     createAccount: builder.mutation<Account, CreateAccountRequest>({
       query: (body) => ({
-        url: '/accounts',
+        url: '/v1/accounts',
         method: 'POST',
         body,
       }),
@@ -77,7 +77,7 @@ export const accountsApi = baseApi.injectEndpoints({
 
     updateAccount: builder.mutation<Account, UpdateAccountRequest>({
       query: ({ id, data }) => ({
-        url: `/accounts/${id}`,
+        url: `/v1/accounts/${id}`,
         method: 'PATCH',
         body: data,
       }),
@@ -89,7 +89,7 @@ export const accountsApi = baseApi.injectEndpoints({
 
     deleteAccount: builder.mutation<ApiResponse, string>({
       query: (id) => ({
-        url: `/accounts/${id}`,
+        url: `/v1/accounts/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: (_result, _error, id) => [
@@ -100,7 +100,7 @@ export const accountsApi = baseApi.injectEndpoints({
 
     deleteAccounts: builder.mutation<ApiResponse, string[]>({
       query: (ids) => ({
-        url: '/accounts/batch',
+        url: '/v1/accounts/batch',
         method: 'DELETE',
         body: { ids },
       }),
@@ -114,7 +114,7 @@ export const accountsApi = baseApi.injectEndpoints({
         formData.append('format', format);
 
         return {
-          url: '/accounts/import',
+          url: '/v1/accounts/import',
           method: 'POST',
           body: formData,
         };
@@ -124,7 +124,7 @@ export const accountsApi = baseApi.injectEndpoints({
 
     exportAccounts: builder.query<Blob, { ids?: string[]; format: 'csv' | 'json' }>({
       query: ({ ids, format }) => ({
-        url: '/accounts/export',
+        url: '/v1/accounts/export',
         params: { format, ids: ids?.join(',') },
         responseHandler: (response) => response.blob(),
       }),
@@ -132,7 +132,7 @@ export const accountsApi = baseApi.injectEndpoints({
 
     testAccount: builder.mutation<ApiResponse<{ success: boolean; error?: string }>, string>({
       query: (id) => ({
-        url: `/accounts/${id}/test`,
+        url: `/v1/accounts/${id}/test`,
         method: 'POST',
       }),
     }),

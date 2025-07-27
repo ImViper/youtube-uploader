@@ -9,7 +9,7 @@ export interface Upload extends BaseEntity {
   description: string;
   tags: string[];
   thumbnailPath?: string;
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused';
   progress: number;
   uploadSpeed?: number;
   timeRemaining?: number;
@@ -40,10 +40,11 @@ const uploadsAdapter = createEntityAdapter<Upload>({
     const statusPriority = {
       uploading: 0,
       processing: 1,
-      pending: 2,
-      failed: 3,
-      cancelled: 4,
-      completed: 5,
+      paused: 2,
+      pending: 3,
+      failed: 4,
+      cancelled: 5,
+      completed: 6,
     };
     const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
     if (priorityDiff !== 0) return priorityDiff;

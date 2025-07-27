@@ -55,7 +55,7 @@ const DashboardPage: React.FC = () => {
   const handleAcknowledgeAlert = async (id: string) => {
     try {
       await acknowledgeAlert(id).unwrap();
-    } catch {
+    } catch (error) {
       console.error('Failed to acknowledge alert:', error);
     }
   };
@@ -63,7 +63,7 @@ const DashboardPage: React.FC = () => {
   const handleDismissAlert = async (id: string) => {
     try {
       await dismissAlert(id).unwrap();
-    } catch {
+    } catch (error) {
       console.error('Failed to dismiss alert:', error);
     }
   };
@@ -71,7 +71,7 @@ const DashboardPage: React.FC = () => {
   const handleBatchAcknowledge = async (ids: string[]) => {
     try {
       await batchAcknowledgeAlerts(ids).unwrap();
-    } catch {
+    } catch (error) {
       console.error('Failed to batch acknowledge alerts:', error);
     }
   };

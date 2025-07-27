@@ -54,7 +54,7 @@ export const monitoringApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getPerformanceMetrics: builder.query<PerformanceMetrics, MonitoringQueryParams>({
       query: (params) => ({
-        url: '/monitoring/performance',
+        url: '/v1/monitoring/performance',
         params,
       }),
       providesTags: ['Monitoring'],
@@ -62,7 +62,7 @@ export const monitoringApi = baseApi.injectEndpoints({
 
     getUploadStatistics: builder.query<UploadStatistics, MonitoringQueryParams>({
       query: (params) => ({
-        url: '/monitoring/statistics',
+        url: '/v1/monitoring/statistics',
         params,
       }),
       providesTags: ['Monitoring'],
@@ -81,13 +81,13 @@ export const monitoringApi = baseApi.injectEndpoints({
       },
       void
     >({
-      query: () => '/monitoring/health',
+      query: () => '/v1/monitoring/health',
       providesTags: ['Monitoring'],
     }),
 
     generateReport: builder.mutation<Blob, ReportGenerationRequest>({
       query: (body) => ({
-        url: '/monitoring/reports/generate',
+        url: '/v1/monitoring/reports/generate',
         method: 'POST',
         body,
         responseHandler: (response) => response.blob(),
@@ -106,7 +106,7 @@ export const monitoringApi = baseApi.injectEndpoints({
       }>,
       void
     >({
-      query: () => '/monitoring/reports/scheduled',
+      query: () => '/v1/monitoring/reports/scheduled',
       providesTags: ['Monitoring'],
     }),
 
@@ -121,7 +121,7 @@ export const monitoringApi = baseApi.injectEndpoints({
       }
     >({
       query: (body) => ({
-        url: '/monitoring/reports/scheduled',
+        url: '/v1/monitoring/reports/scheduled',
         method: 'POST',
         body,
       }),
@@ -130,7 +130,7 @@ export const monitoringApi = baseApi.injectEndpoints({
 
     deleteScheduledReport: builder.mutation<void, string>({
       query: (id) => ({
-        url: `/monitoring/reports/scheduled/${id}`,
+        url: `/v1/monitoring/reports/scheduled/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Monitoring'],

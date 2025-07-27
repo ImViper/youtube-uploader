@@ -8,7 +8,7 @@ import { uploadsApi } from '@/features/uploads/uploadsApi';
 
 // Mock server
 const server = setupServer(
-  http.post('http://localhost:3000/api/uploads', async () => {
+  http.post('http://localhost:3000/api/v1/tasks', async () => {
     // 简化处理，不解析FormData
     return HttpResponse.json({
       id: '123',
@@ -21,7 +21,7 @@ const server = setupServer(
       createdAt: new Date().toISOString(),
     });
   }),
-  http.get('http://localhost:3000/api/uploads', () => {
+  http.get('http://localhost:3000/api/v1/tasks', () => {
     return HttpResponse.json({
       items: [
         {

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, Row, Col, Select, Statistic, Spin, Empty } from 'antd';
 import {
   ArrowUpOutlined,
@@ -13,11 +13,10 @@ import { selectUploadStatistics, selectTimeRange } from '@/features/monitoring/m
 import { useGetUploadStatisticsQuery } from '@/features/monitoring/monitoringApi';
 import dayjs from 'dayjs';
 
-const { _Option } = Select;
 
 const UploadStatistics: React.FC = () => {
   const { t } = useTranslation();
-  const [_dateRange, _setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const volumeChartRef = useRef<HTMLDivElement>(null);
   const successRateChartRef = useRef<HTMLDivElement>(null);
   const failureChartRef = useRef<HTMLDivElement>(null);

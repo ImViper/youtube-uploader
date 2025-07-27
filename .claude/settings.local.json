@@ -6,7 +6,8 @@
       "Bash(npm ci:*)",
       "Bash(npm test:*)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "mcp__sequential-thinking__sequentialthinking"
     ],
     "deny": []
   }

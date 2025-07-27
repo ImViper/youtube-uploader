@@ -174,7 +174,7 @@ export class PerformanceMonitor {
   checkBudget(): { passed: boolean; violations: string[] } {
     const violations: string[] = [];
 
-    if (window.performance && window.performance.getEntriesByType) {
+    if (window.performance && typeof window.performance.getEntriesByType === 'function') {
       const navigationTiming = performance.getEntriesByType(
         'navigation',
       )[0] as PerformanceNavigationTiming;

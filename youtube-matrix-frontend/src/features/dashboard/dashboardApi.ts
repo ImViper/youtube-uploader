@@ -40,13 +40,13 @@ interface AlertsResponse {
 export const dashboardApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getDashboardMetrics: builder.query<DashboardMetrics, void>({
-      query: () => '/dashboard/metrics',
+      query: () => '/v1/dashboard/metrics',
       providesTags: ['Dashboard'],
     }),
 
     getDashboardAlerts: builder.query<AlertsResponse, { limit?: number }>({
       query: (params) => ({
-        url: '/dashboard/alerts',
+        url: '/v1/dashboard/alerts',
         params,
       }),
       providesTags: ['Dashboard'],
@@ -54,7 +54,7 @@ export const dashboardApi = baseApi.injectEndpoints({
 
     acknowledgeAlert: builder.mutation<Alert, string>({
       query: (id) => ({
-        url: `/dashboard/alerts/${id}/acknowledge`,
+        url: `/v1/dashboard/alerts/${id}/acknowledge`,
         method: 'POST',
       }),
       invalidatesTags: ['Dashboard'],
@@ -62,7 +62,7 @@ export const dashboardApi = baseApi.injectEndpoints({
 
     dismissAlert: builder.mutation<void, string>({
       query: (id) => ({
-        url: `/dashboard/alerts/${id}`,
+        url: `/v1/dashboard/alerts/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Dashboard'],
@@ -70,7 +70,7 @@ export const dashboardApi = baseApi.injectEndpoints({
 
     batchAcknowledgeAlerts: builder.mutation<void, string[]>({
       query: (ids) => ({
-        url: '/dashboard/alerts/batch/acknowledge',
+        url: '/v1/dashboard/alerts/batch/acknowledge',
         method: 'POST',
         body: { ids },
       }),

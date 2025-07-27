@@ -2,6 +2,7 @@ import { Video } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import pino from 'pino';
 import { getDatabase } from '../../database/connection';
+import { QueueManager } from '../../queue/manager';
 
 const logger = pino({
   name: 'task-service',
@@ -11,7 +12,7 @@ const logger = pino({
 export interface Task {
   id: string;
   type: 'upload' | 'update' | 'comment' | 'analytics';
-  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused' | 'active';
   priority: 'low' | 'normal' | 'high' | 'urgent';
   video?: Video;
   data?: any;
@@ -59,8 +60,11 @@ interface TaskStats {
 
 export class TaskService {
   private db = getDatabase();
+  private queueManager?: QueueManager;
 
-  constructor() {}
+  constructor(queueManager?: QueueManager) {
+    this.queueManager = queueManager;
+  }
 
   /**
    * Create a new task
@@ -102,9 +106,41 @@ export class TaskService {
         ]
       );
 
-      // If it's an upload task, mark as queued
-      if (task.type === 'upload' && task.video) {
-        task.status = 'queued';
+      // If it's an upload task and we have a queue manager, add to queue
+      if (task.type === 'upload' && task.video && this.queueManager) {
+        try {
+          // Add task to BullMQ queue
+          const uploadTask = {
+            id: task.id,
+            accountId: task.accountId || '',
+            video: task.video,
+            priority: this.mapPriorityToNumber(task.priority),
+            scheduledAt: task.scheduledAt,
+            metadata: task.metadata
+          };
+          
+          await this.queueManager.addUploadTask(uploadTask);
+          
+          // Update status to active after successfully adding to queue
+          task.status = 'queued'; // Keep internal status as queued
+          await this.db.query(
+            `UPDATE upload_tasks SET status = 'active' WHERE id = $1`,
+            [task.id]
+          );
+          
+          logger.info({ taskId: task.id }, 'Task added to queue successfully');
+        } catch (error) {
+          logger.error({ error, taskId: task.id }, 'Failed to add task to queue');
+          // Keep status as pending if queue addition fails
+        }
+      } else if (task.type === 'upload' && task.video) {
+        // If no queue manager, mark as active (for backward compatibility)
+        task.status = 'queued'; // Keep internal status
+        await this.db.query(
+          `UPDATE upload_tasks SET status = 'active' WHERE id = $1`,
+          [task.id]
+        );
+        logger.warn({ taskId: task.id }, 'No queue manager available, task marked as active but not processing');
       }
 
       return task;
@@ -311,6 +347,10 @@ export class TaskService {
         updateFields.push(`status = $${paramIndex++}`);
         params.push(updates.status);
       }
+      if (updates.priority !== undefined) {
+        updateFields.push(`priority = $${paramIndex++}`);
+        params.push(this.mapPriorityToNumber(updates.priority));
+      }
       if (updates.error !== undefined) {
         updateFields.push(`error = $${paramIndex++}`);
         params.push(updates.error);
@@ -326,6 +366,10 @@ export class TaskService {
       if (updates.completedAt !== undefined) {
         updateFields.push(`completed_at = $${paramIndex++}`);
         params.push(updates.completedAt);
+      }
+      if (updates.metadata !== undefined) {
+        updateFields.push(`video_data = jsonb_set(COALESCE(video_data, '{}'), '{metadata}', $${paramIndex++}::jsonb)`);
+        params.push(JSON.stringify(updates.metadata));
       }
 
       if (updateFields.length === 0) {
@@ -372,6 +416,127 @@ export class TaskService {
   }
 
   /**
+   * Pause a task
+   */
+  async pause(id: string): Promise<Task | undefined> {
+    try {
+      const task = await this.findById(id);
+      if (!task) {
+        return undefined;
+      }
+
+      // Can only pause active tasks (queued or processing in code)
+      if (task.status !== 'active' && task.status !== 'queued' && task.status !== 'processing') {
+        logger.warn({ taskId: id, status: task.status }, 'Cannot pause task in current status');
+        return undefined;
+      }
+
+      // If we have a queue manager and the task is in the queue, pause it
+      if (this.queueManager && task.metadata?.jobId) {
+        try {
+          const job = await this.queueManager.getJob(task.metadata.jobId);
+          if (job) {
+            // BullMQ doesn't have a built-in pause for individual jobs
+            // We'll remove it from queue and update status
+            await job.remove();
+            logger.info({ taskId: id, jobId: task.metadata.jobId }, 'Removed job from queue');
+          }
+        } catch (error) {
+          logger.error({ error, taskId: id }, 'Failed to remove job from queue');
+        }
+      }
+
+      // Update task status to failed with paused indicator
+      // Since database doesn't support 'paused' status, we use 'failed' with specific error
+      const result = await this.db.query(
+        `UPDATE upload_tasks 
+         SET status = 'failed', error = 'PAUSED_BY_USER'
+         WHERE id = $1 AND status = 'active'
+         RETURNING *`,
+        [id]
+      );
+
+      if (result.rows.length === 0) {
+        return undefined;
+      }
+
+      return await this.findById(id);
+    } catch (error) {
+      logger.error({ error }, 'Failed to pause task');
+      throw error;
+    }
+  }
+
+  /**
+   * Resume a paused task or start a pending task
+   */
+  async resume(id: string): Promise<Task | undefined> {
+    try {
+      const task = await this.findById(id);
+      if (!task) {
+        return undefined;
+      }
+
+      // Can resume paused tasks (failed with PAUSED_BY_USER) or start pending tasks
+      const isPaused = task.status === 'failed' && task.error === 'PAUSED_BY_USER';
+      if (!isPaused && task.status !== 'pending') {
+        logger.warn({ taskId: id, status: task.status }, 'Cannot resume/start task in current status');
+        return undefined;
+      }
+
+      // For paused tasks, reset to pending first
+      if (isPaused) {
+        const result = await this.db.query(
+          `UPDATE upload_tasks 
+           SET status = 'pending', error = NULL
+           WHERE id = $1 AND status = 'failed' AND error = 'PAUSED_BY_USER'
+           RETURNING *`,
+          [id]
+        );
+
+        if (result.rows.length === 0) {
+          return undefined;
+        }
+      }
+
+      // Add to queue if it's an upload task
+      if (task.type === 'upload' && task.video && this.queueManager) {
+        try {
+          const uploadTask = {
+            id: task.id,
+            accountId: task.accountId || '',
+            video: task.video,
+            priority: this.mapPriorityToNumber(task.priority),
+            scheduledAt: task.scheduledAt,
+            metadata: { ...task.metadata, resumed: true }
+          };
+          
+          const job = await this.queueManager.addUploadTask(uploadTask);
+          
+          // Update status to active and store new job ID
+          await this.db.query(
+            `UPDATE upload_tasks 
+             SET status = 'active', 
+                 video_data = jsonb_set(COALESCE(video_data, '{}'), '{metadata,jobId}', $2::jsonb)
+             WHERE id = $1`,
+            [task.id, JSON.stringify(job.id)]
+          );
+          
+          logger.info({ taskId: task.id, jobId: job.id }, 'Task resumed and re-added to queue');
+        } catch (error) {
+          logger.error({ error, taskId: task.id }, 'Failed to re-add task to queue');
+          throw error;
+        }
+      }
+
+      return await this.findById(id);
+    } catch (error) {
+      logger.error({ error }, 'Failed to resume task');
+      throw error;
+    }
+  }
+
+  /**
    * Cancel a task
    */
   async cancel(id: string): Promise<boolean> {
@@ -382,18 +547,30 @@ export class TaskService {
         return false;
       }
 
-      // Can only cancel pending or active tasks
-      if (!['pending', 'active'].includes(task.status)) {
+      // Can only cancel pending, active, or paused tasks
+      const isPaused = task.status === 'failed' && task.error === 'PAUSED_BY_USER';
+      if (task.status !== 'pending' && task.status !== 'active' && !isPaused) {
         return false;
       }
 
-      // Task cancellation is handled by updating the database status
+      // If we have a queue manager and the task is in the queue, remove it
+      if (this.queueManager && task.metadata?.jobId) {
+        try {
+          const job = await this.queueManager.getJob(task.metadata.jobId);
+          if (job) {
+            await job.remove();
+            logger.info({ taskId: id, jobId: task.metadata.jobId }, 'Removed job from queue for cancellation');
+          }
+        } catch (error) {
+          logger.error({ error, taskId: id }, 'Failed to remove job from queue during cancellation');
+        }
+      }
 
-      // Update task status to failed with cancellation reason
+      // Update task status to failed with cancelled indicator
       const result = await this.db.query(
         `UPDATE upload_tasks 
          SET status = 'failed', error = 'Task cancelled by user'
-         WHERE id = $1 AND status IN ('pending', 'active')
+         WHERE id = $1 AND (status IN ('pending', 'active') OR (status = 'failed' AND error = 'PAUSED_BY_USER'))
          RETURNING id`,
         [id]
       );
@@ -429,12 +606,39 @@ export class TaskService {
       }
 
       // Re-queue the task
-      if (task.type === 'upload' && task.video) {
-        // Update status to queued for retry
+      if (task.type === 'upload' && task.video && this.queueManager) {
+        try {
+          // Add task back to BullMQ queue
+          const uploadTask = {
+            id: task.id,
+            accountId: task.accountId || '',
+            video: task.video,
+            priority: this.mapPriorityToNumber(task.priority),
+            scheduledAt: task.scheduledAt,
+            metadata: task.metadata,
+            retryCount: (task.attempts || 0) + 1
+          };
+          
+          await this.queueManager.addUploadTask(uploadTask);
+          
+          // Update status to active for retry
+          await this.db.query(
+            `UPDATE upload_tasks SET status = 'active' WHERE id = $1`,
+            [id]
+          );
+          
+          logger.info({ taskId: task.id }, 'Task re-added to queue for retry');
+        } catch (error) {
+          logger.error({ error, taskId: task.id }, 'Failed to re-add task to queue');
+          throw error;
+        }
+      } else if (task.type === 'upload' && task.video) {
+        // If no queue manager, just update status
         await this.db.query(
-          `UPDATE upload_tasks SET status = 'queued' WHERE id = $1`,
+          `UPDATE upload_tasks SET status = 'active' WHERE id = $1`,
           [id]
         );
+        logger.warn({ taskId: task.id }, 'No queue manager available for retry');
       }
 
       return await this.findById(id);

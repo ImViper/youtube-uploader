@@ -45,7 +45,12 @@ export class UploadWorker {
       ...config
     };
 
-    const connection = getRedis().getClient();
+    // BullMQ requires a Redis connection without keyPrefix
+    const connection = {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '5988'),
+      password: process.env.REDIS_PASSWORD
+    };
 
     // Create worker
     this.worker = new Worker<UploadTask, UploadResult>(

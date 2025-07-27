@@ -27,7 +27,7 @@ import {
 } from '@ant-design/icons';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import type { Task } from '../tasksSlice';
+import type { Task } from '../tasksApi';
 
 const { Text } = Typography;
 
@@ -57,7 +57,8 @@ const TaskList: React.FC<TaskListProps> = ({
   const getStatusTag = (status: Task['status']) => {
     const statusConfig = {
       pending: { color: 'default', icon: <ClockCircleOutlined />, text: '等待中' },
-      running: { color: 'processing', icon: <LoadingOutlined spin />, text: '执行中' },
+      queued: { color: 'default', icon: <ClockCircleOutlined />, text: '排队中' },
+      processing: { color: 'processing', icon: <LoadingOutlined spin />, text: '执行中' },
       completed: { color: 'success', icon: <CheckCircleOutlined />, text: '已完成' },
       failed: { color: 'error', icon: <CloseCircleOutlined />, text: '失败' },
       cancelled: { color: 'default', icon: <CloseCircleOutlined />, text: '已取消' },
@@ -77,7 +78,7 @@ const TaskList: React.FC<TaskListProps> = ({
       upload: { color: 'blue', text: '上传' },
       update: { color: 'orange', text: '更新' },
       comment: { color: 'green', text: '评论' },
-      delete: { color: 'red', text: '删除' },
+      analytics: { color: 'purple', text: '分析' },
     };
 
     const config = typeConfig[type];
@@ -86,8 +87,9 @@ const TaskList: React.FC<TaskListProps> = ({
 
   const getPriorityBadge = (priority: Task['priority']) => {
     const priorityConfig = {
+      urgent: { status: 'error' as const, text: '紧急' },
       high: { status: 'error' as const, text: '高' },
-      medium: { status: 'warning' as const, text: '中' },
+      normal: { status: 'warning' as const, text: '中' },
       low: { status: 'default' as const, text: '低' },
     };
 
@@ -102,11 +104,14 @@ const TaskList: React.FC<TaskListProps> = ({
       key: 'id',
       width: 120,
       ellipsis: true,
-      render: (id) => (
-        <Tooltip title={id}>
-          <Text copyable={{ text: id }}>{id.substring(0, 8)}...</Text>
-        </Tooltip>
-      ),
+      render: (id) => {
+        if (!id) return '-';
+        return (
+          <Tooltip title={id}>
+            <Text copyable={{ text: id }}>{id.substring(0, 8)}...</Text>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '类型',
@@ -117,7 +122,7 @@ const TaskList: React.FC<TaskListProps> = ({
         { text: '上传', value: 'upload' },
         { text: '更新', value: 'update' },
         { text: '评论', value: 'comment' },
-        { text: '删除', value: 'delete' },
+        { text: '分析', value: 'analytics' },
       ],
       onFilter: (value, record) => record.type === value,
       render: (type) => getTypeTag(type),
@@ -129,7 +134,9 @@ const TaskList: React.FC<TaskListProps> = ({
       width: 100,
       filters: [
         { text: '等待中', value: 'pending' },
-        { text: '执行中', value: 'running' },
+        { text: '排队中', value: 'queued' },
+        { text: '执行中', value: 'processing' },
+        { text: '已暂停', value: 'paused' },
         { text: '已完成', value: 'completed' },
         { text: '失败', value: 'failed' },
         { text: '已取消', value: 'cancelled' },
@@ -143,8 +150,9 @@ const TaskList: React.FC<TaskListProps> = ({
       key: 'priority',
       width: 80,
       filters: [
+        { text: '紧急', value: 'urgent' },
         { text: '高', value: 'high' },
-        { text: '中', value: 'medium' },
+        { text: '中', value: 'normal' },
         { text: '低', value: 'low' },
       ],
       onFilter: (value, record) => record.priority === value,
@@ -179,7 +187,10 @@ const TaskList: React.FC<TaskListProps> = ({
       key: 'accountId',
       width: 120,
       ellipsis: true,
-      render: (accountId) => <Tooltip title={accountId}>{accountId.substring(0, 8)}...</Tooltip>,
+      render: (accountId) => {
+        if (!accountId) return '-';
+        return <Tooltip title={accountId}>{accountId.substring(0, 8)}...</Tooltip>;
+      },
     },
     {
       title: '重试次数',
@@ -187,8 +198,8 @@ const TaskList: React.FC<TaskListProps> = ({
       width: 100,
       render: (_, record) => (
         <Space>
-          <Text>{record.attempts}</Text>
-          <Text type="secondary">/ {record.maxAttempts}</Text>
+          <Text>{record.attempts || 0}</Text>
+          <Text type="secondary">/ {record.maxAttempts || 3}</Text>
         </Space>
       ),
     },
@@ -222,7 +233,7 @@ const TaskList: React.FC<TaskListProps> = ({
           },
         ];
 
-        if (record.status === 'running' && onPause) {
+        if (record.status === 'processing' && onPause) {
           menuItems.push({
             key: 'pause',
             label: '暂停',
@@ -240,7 +251,7 @@ const TaskList: React.FC<TaskListProps> = ({
           });
         }
 
-        if (['running', 'paused', 'pending'].includes(record.status)) {
+        if (['processing', 'paused', 'pending', 'queued'].includes(record.status)) {
           menuItems.push({
             key: 'cancel',
             label: '取消',
@@ -250,7 +261,7 @@ const TaskList: React.FC<TaskListProps> = ({
           });
         }
 
-        if (record.status === 'failed' && record.attempts < record.maxAttempts) {
+        if (record.status === 'failed' && (record.attempts || 0) < (record.maxAttempts || 3)) {
           menuItems.push({
             key: 'retry',
             label: '重试',
@@ -327,20 +338,15 @@ const TaskList: React.FC<TaskListProps> = ({
               <Text style={{ marginLeft: 8 }}>
                 {new Date(record.completedAt).toLocaleString('zh-CN')}
               </Text>
-              <Text type="secondary" style={{ marginLeft: 8 }}>
-                (耗时: {formatDistanceToNow(new Date(record.startedAt!), { locale: zhCN })})
-              </Text>
+              {record.startedAt && (
+                <Text type="secondary" style={{ marginLeft: 8 }}>
+                  (耗时: {formatDistanceToNow(new Date(record.startedAt), { locale: zhCN })})
+                </Text>
+              )}
             </div>
           )}
 
-          {record.uploadId && (
-            <div>
-              <Text strong>关联上传：</Text>
-              <Text copyable style={{ marginLeft: 8 }}>
-                {record.uploadId}
-              </Text>
-            </div>
-          )}
+          {/* uploadId 字段在 Task 类型中不存在，暂时注释掉 */}
 
           {record.metadata && Object.keys(record.metadata).length > 0 && (
             <div>
@@ -364,13 +370,16 @@ const TaskList: React.FC<TaskListProps> = ({
   };
 
   const filteredTasks =
-    activeTab === 'all' ? tasks : tasks.filter((task) => task.status === activeTab);
+    activeTab === 'all' 
+      ? tasks 
+      : activeTab === 'pending'
+        ? tasks.filter((task) => task.status === 'pending' || task.status === 'queued')
+        : tasks.filter((task) => task.status === activeTab);
 
   const tabItems = [
     { key: 'all', label: '全部', count: tasks.length },
-    { key: 'pending', label: '待处理', count: tasks.filter((t) => t.status === 'pending').length },
-    { key: 'running', label: '运行中', count: tasks.filter((t) => t.status === 'running').length },
-    { key: 'paused', label: '已暂停', count: tasks.filter((t) => t.status === 'paused').length },
+    { key: 'pending', label: '待处理', count: tasks.filter((t) => t.status === 'pending' || t.status === 'queued').length },
+    { key: 'processing', label: '运行中', count: tasks.filter((t) => t.status === 'processing').length },
     {
       key: 'completed',
       label: '已完成',
@@ -385,7 +394,7 @@ const TaskList: React.FC<TaskListProps> = ({
   ];
 
   return (
-    <Card bodyStyle={{ padding: 0 }}>
+    <Card styles={{ body: { padding: 0 } }}>
       <Tabs
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key as any)}
@@ -408,7 +417,7 @@ const TaskList: React.FC<TaskListProps> = ({
         expandable={{
           expandedRowRender,
           rowExpandable: (record) =>
-            !!record.error || !!record.metadata || !!record.uploadId || !!record.scheduledAt,
+            !!record.error || !!record.metadata || !!record.scheduledAt,
         }}
         pagination={{
           showSizeChanger: true,

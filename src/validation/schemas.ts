@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 // Common schemas
 export const paginationSchema = z.object({
-  page: z.string().optional(),
-  pageSize: z.string().optional(),
+  page: z.string().optional().transform(val => val ? parseInt(val, 10) : 1),
+  pageSize: z.string().optional().transform(val => val ? parseInt(val, 10) : 20),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
   search: z.string().optional()
@@ -76,8 +76,8 @@ export const updateAccountSchema = z.object({
 
 export const accountFilterSchema = z.object({
   status: z.enum(['active', 'suspended', 'disabled', 'all']).optional(),
-  minHealthScore: z.number().min(0).max(100).optional(),
-  hasAvailableUploads: z.boolean().optional(),
+  minHealthScore: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined),
+  hasAvailableUploads: z.string().optional().transform(val => val === 'true' ? true : val === 'false' ? false : undefined),
   tags: z.array(z.string()).optional()
 });
 
@@ -146,5 +146,5 @@ export const importAccountsSchema = z.object({
 export const exportAccountsSchema = z.object({
   format: z.enum(['csv', 'json']).default('json'),
   ids: z.array(z.string().uuid()).optional(),
-  includePasswords: z.boolean().default(false)
+  includePasswords: z.string().optional().transform(val => val === 'true')
 });

@@ -9,7 +9,7 @@ services:
     environment:
       POSTGRES_DB: youtube_uploader
       POSTGRES_USER: youtube_user
-      POSTGRES_PASSWORD: youtube_password_change_me
+      POSTGRES_PASSWORD: qiyuan123
     ports:
       - "5987:5432"
     volumes:

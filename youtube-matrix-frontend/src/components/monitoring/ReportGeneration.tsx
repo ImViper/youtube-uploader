@@ -57,7 +57,7 @@ const ReportGeneration: React.FC = () => {
   const [scheduleForm] = Form.useForm();
   const [isScheduleModalVisible, setIsScheduleModalVisible] = useState(false);
   const [editingReport, setEditingReport] = useState<ScheduledReport | null>(null);
-  const [_selectedAccounts, _setSelectedAccounts] = useState<string[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
 
   // API hooks
   const [generateReport, { isLoading: isGenerating }] = useGenerateReportMutation();
@@ -68,14 +68,15 @@ const ReportGeneration: React.FC = () => {
   // Handle instant report generation
   const handleGenerateReport = async (values: {
     reportType: string;
+    timeRange?: string;
     dateRange: [dayjs.Dayjs, dayjs.Dayjs];
     format: string;
   }) => {
     try {
       const params = {
-        type: values.reportType,
-        timeRange: values.timeRange,
-        format: values.format,
+        type: values.reportType as 'accounts' | 'uploads' | 'system' | 'performance',
+        timeRange: values.timeRange as '24h' | '7d' | '30d' | 'custom' | undefined,
+        format: values.format as 'json' | 'csv' | 'pdf',
         customDateRange:
           values.timeRange === 'custom'
             ? {

@@ -3,9 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import pino from 'pino';
-import { createApiRoutes } from './api/routes';
 import { createAuthRoutes, authenticateToken } from './api/auth';
-import { createDashboardRoutes } from './api/dashboard';
 import { initializeWebSocket } from './api/websocket';
 import { MatrixManager } from './matrix/manager';
 import { MatrixManagerLite } from './matrix/manager-lite';
@@ -129,35 +127,15 @@ async function startServer() {
       authenticateToken(req, res, next);
     });
     
-    // Dashboard routes
-    const dashboardRoutes = createDashboardRoutes({ 
-      matrixManager: matrixManager as any, 
-      metricsCollector: metricsCollector as any 
-    });
-    app.use('/api/dashboard', dashboardRoutes);
-    
-    // API routes (will use null services if not initialized)
-    const apiRoutes = createApiRoutes({ 
-      matrixManager: matrixManager as any, 
-      metricsCollector: metricsCollector as any 
-    });
-    app.use('/api', apiRoutes);
+    // Note: Dashboard routes are now handled in V1 API routes
+    // Old API routes removed - everything is now under /api/v1
     
     // V1 API routes (includes tasks) - create even if services fail
     try {
       const { createApiV1Routes } = require('./api/v1/routes');
       const v1Routes = createApiV1Routes({ 
-        matrixManager: matrixManager || { 
-          getAccountManager: () => ({ listAccounts: async () => [] }),
-          getQueueManager: () => ({ 
-            addUploadTask: async () => ({ id: 'mock-id' }),
-            removeTask: async () => {}
-          })
-        }, 
-        metricsCollector: metricsCollector || { 
-          getCurrentMetrics: async () => ({}),
-          performHealthChecks: async () => []
-        }
+        matrixManager: matrixManager, 
+        metricsCollector: metricsCollector
       });
       app.use('/api/v1', v1Routes);
       logger.info('V1 API routes initialized');
@@ -180,11 +158,15 @@ async function startServer() {
         body: req.body 
       }, 'Unhandled error in request');
       
+      console.error('Global error handler caught:', err.message);
+      console.error('Stack:', err.stack);
+      
       res.status(500).json({
         success: false,
         error: process.env.NODE_ENV === 'development' 
           ? err.message || 'Internal server error'
-          : 'Internal server error'
+          : 'Internal server error',
+        message: err.message // Always include message for debugging
       });
     });
     

@@ -178,7 +178,7 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ data, loading }) => {
   return (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={14}>
-        <Card loading={loading} bodyStyle={{ padding: '24px' }} className="h-full">
+        <Card loading={loading} styles={{ body: { padding: '24px' } }} className="h-full">
           <ReactECharts
             option={trendChartOption}
             style={{ height: '350px' }}
@@ -187,7 +187,7 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ data, loading }) => {
         </Card>
       </Col>
       <Col xs={24} lg={10}>
-        <Card loading={loading} bodyStyle={{ padding: '24px' }} className="h-full">
+        <Card loading={loading} styles={{ body: { padding: '24px' } }} className="h-full">
           <ReactECharts
             option={distributionChartOption}
             style={{ height: '350px' }}

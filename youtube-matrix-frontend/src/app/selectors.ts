@@ -59,13 +59,13 @@ export const selectFilteredUploads = createSelector(
 
     if (filter.dateRange.start) {
       filtered = filtered.filter(
-        (upload) => new Date(upload.createdAt) >= new Date(filter.dateRange.start),
+        (upload) => new Date(upload.createdAt) >= new Date(filter.dateRange.start!),
       );
     }
 
     if (filter.dateRange.end) {
       filtered = filtered.filter(
-        (upload) => new Date(upload.createdAt) <= new Date(filter.dateRange.end),
+        (upload) => new Date(upload.createdAt) <= new Date(filter.dateRange.end!),
       );
     }
 
@@ -97,13 +97,13 @@ export const selectFilteredTasks = createSelector(
 
     if (filter.dateRange.start) {
       filtered = filtered.filter(
-        (task) => new Date(task.createdAt) >= new Date(filter.dateRange.start),
+        (task) => new Date(task.createdAt) >= new Date(filter.dateRange.start!),
       );
     }
 
     if (filter.dateRange.end) {
       filtered = filtered.filter(
-        (task) => new Date(task.createdAt) <= new Date(filter.dateRange.end),
+        (task) => new Date(task.createdAt) <= new Date(filter.dateRange.end!),
       );
     }
 

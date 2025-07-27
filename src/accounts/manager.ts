@@ -1,4 +1,4 @@
-import { getDatabase } from '../database/connection';
+import { getDatabase, DatabaseConnection } from '../database/connection';
 import bcrypt from 'bcrypt';
 import pino from 'pino';
 import { Credentials } from '../types';
@@ -46,8 +46,12 @@ export interface AccountFilter {
 }
 
 export class AccountManager {
-  private db = getDatabase();
+  private db: DatabaseConnection;
   private encryptionSaltRounds = 10;
+
+  constructor() {
+    this.db = getDatabase();
+  }
 
   /**
    * Add a new account
@@ -67,6 +71,8 @@ export class AccountManager {
       let bitbrowserWindowName: string | null = null;
       let isWindowLoggedIn = false;
 
+      logger.info({ metadata }, 'Received metadata in addAccount');
+      
       if (metadata?.browserWindowName) {
         const windowName = metadata.browserWindowName;
         bitbrowserWindowName = windowName;
@@ -90,6 +96,8 @@ export class AccountManager {
           windowId: bitbrowserWindowId,
           isLoggedIn: isWindowLoggedIn 
         }, 'Browser window mapping configured');
+      } else {
+        logger.warn({ metadata }, 'No browserWindowName in metadata');
       }
 
       // Insert into database
@@ -434,31 +442,59 @@ export class AccountManager {
    * Map database row to AccountProfile
    */
   private mapDatabaseRow(row: any): AccountProfile {
-    const account: AccountProfile = {
-      id: row.id,
-      email: row.email,
-      credentials: JSON.parse(row.encrypted_credentials),
-      browserProfileId: row.browser_profile_id,
-      status: row.status,
-      dailyUploadCount: row.daily_upload_count,
-      dailyUploadLimit: row.daily_upload_limit,
-      lastUploadTime: row.last_upload_time,
-      healthScore: row.health_score,
-      metadata: row.metadata,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      // Map browser window fields
-      bitbrowserWindowId: row.bitbrowser_window_id,
-      bitbrowserWindowName: row.bitbrowser_window_name,
-      isWindowLoggedIn: row.is_window_logged_in,
-    };
-    
-    // Add proxy if it exists in metadata
-    if (row.metadata?.proxy) {
-      account.proxy = row.metadata.proxy;
+    try {
+      // Handle credentials parsing
+      let credentials;
+      try {
+        credentials = typeof row.encrypted_credentials === 'string' 
+          ? JSON.parse(row.encrypted_credentials) 
+          : row.encrypted_credentials;
+      } catch (e) {
+        logger.warn({ 
+          id: row.id, 
+          email: row.email,
+          error: e 
+        }, 'Failed to parse encrypted_credentials, using default');
+        credentials = { email: row.email, password: '' };
+      }
+
+      const account: AccountProfile = {
+        id: row.id,
+        email: row.email,
+        credentials: credentials,
+        browserProfileId: row.browser_profile_id,
+        status: row.status,
+        dailyUploadCount: row.daily_upload_count || 0,
+        dailyUploadLimit: row.daily_upload_limit || 10,
+        lastUploadTime: row.last_upload_time,
+        healthScore: row.health_score || 100,
+        metadata: row.metadata || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        // Map browser window fields
+        bitbrowserWindowId: row.bitbrowser_window_id,
+        bitbrowserWindowName: row.bitbrowser_window_name,
+        isWindowLoggedIn: row.is_window_logged_in,
+      };
+      
+      // Add proxy if it exists in metadata
+      if (row.metadata?.proxy) {
+        account.proxy = row.metadata.proxy;
+      }
+      
+      return account;
+    } catch (error: any) {
+      logger.error({ 
+        row: {
+          id: row?.id,
+          email: row?.email,
+          hasCredentials: !!row?.encrypted_credentials
+        }, 
+        error: error.message,
+        stack: error.stack
+      }, 'Failed to map database row to AccountProfile');
+      throw error;
     }
-    
-    return account;
   }
 
   /**
@@ -617,8 +653,15 @@ export class AccountManager {
       const isAvailable = await bitBrowserClient.isAvailable();
       if (!isAvailable) {
         logger.warn('BitBrowser API is not available, using fallback');
-        // Fallback: generate a deterministic ID
-        return `window-${windowName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+        // Fallback: use the window name as ID
+        return windowName;
+      }
+      
+      // Get window ID by name
+      const windowId = await bitBrowserClient.getWindowIdByName(windowName);
+      if (windowId) {
+        logger.info({ windowName, windowId }, 'Found window ID by name');
+        return windowId;
       }
       
       // Find window by name

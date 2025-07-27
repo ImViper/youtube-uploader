@@ -8,7 +8,7 @@ import { accountsApi } from '@/features/accounts/accountsApi';
 
 // Mock server
 const server = setupServer(
-  http.get('http://localhost:3000/api/accounts', () => {
+  http.get('http://localhost:3000/api/v1/accounts', () => {
     return HttpResponse.json({
       items: [
         {
@@ -38,7 +38,7 @@ const server = setupServer(
       hasNextPage: false,
     });
   }),
-  http.post('http://localhost:3000/api/accounts', async ({ request }) => {
+  http.post('http://localhost:3000/api/v1/accounts', async ({ request }) => {
     const body = (await request.json()) as { username: string; email: string };
     return HttpResponse.json({
       id: '3',
@@ -51,7 +51,7 @@ const server = setupServer(
       failureRate: 0,
     });
   }),
-  http.delete('http://localhost:3000/api/accounts/:id', ({ params }) => {
+  http.delete('http://localhost:3000/api/v1/accounts/:id', ({ params }) => {
     return HttpResponse.json({ success: true, id: params.id });
   }),
 );

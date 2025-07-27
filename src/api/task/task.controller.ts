@@ -27,7 +27,9 @@ export class TaskController {
       logger.error({ error }, 'Failed to create task');
       res.status(500).json({
         success: false,
-        error: 'Failed to create task'
+        error: process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development' 
+          ? error instanceof Error ? error.message : 'Failed to create task'
+          : 'Failed to create task'
       });
     }
   }
@@ -120,6 +122,68 @@ export class TaskController {
   }
 
   /**
+   * Pause a task
+   */
+  async pauseTask(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const task = await this.taskService.pause(id);
+
+      if (!task) {
+        return res.status(404).json({
+          success: false,
+          error: 'Task not found or cannot be paused'
+        });
+      }
+
+      logger.info({ taskId: id }, 'Task paused successfully');
+
+      res.json({
+        success: true,
+        data: task,
+        message: 'Task paused successfully'
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to pause task');
+      res.status(500).json({
+        success: false,
+        error: 'Failed to pause task'
+      });
+    }
+  }
+
+  /**
+   * Resume a paused task
+   */
+  async resumeTask(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const task = await this.taskService.resume(id);
+
+      if (!task) {
+        return res.status(404).json({
+          success: false,
+          error: 'Task not found or cannot be resumed'
+        });
+      }
+
+      logger.info({ taskId: id }, 'Task resumed successfully');
+
+      res.json({
+        success: true,
+        data: task,
+        message: 'Task resumed successfully'
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to resume task');
+      res.status(500).json({
+        success: false,
+        error: 'Failed to resume task'
+      });
+    }
+  }
+
+  /**
    * Cancel a task
    */
   async cancelTask(req: Request, res: Response) {
@@ -134,10 +198,14 @@ export class TaskController {
         });
       }
 
+      // Fetch the updated task to return in response
+      const task = await this.taskService.findById(id);
+
       logger.info({ taskId: id }, 'Task cancelled successfully');
 
       res.json({
         success: true,
+        data: task,
         message: 'Task cancelled successfully'
       });
     } catch (error) {

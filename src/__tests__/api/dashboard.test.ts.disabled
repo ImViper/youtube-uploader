@@ -1,0 +1,947 @@
+import { Request, Response } from 'express';
+import request from 'supertest';
+import express, { Express } from 'express';
+import { createDashboardRoutes, createSystemAlert, DashboardConfig } from '../../api/dashboard';
+import { MatrixManager } from '../../matrix/manager';
+import { MetricsCollector } from '../../monitoring/metrics';
+
+// Mock dependencies
+jest.mock('../../matrix/manager');
+jest.mock('../../monitoring/metrics');
+jest.mock('../../middleware/cache', () => ({
+  cacheMiddleware: () => (req: any, res: any, next: any) => next(),
+  cacheInvalidation: () => (req: any, res: any, next: any) => next(),
+  cacheConfigs: {
+    dashboard: { ttl: 300, prefix: 'dashboard:' },
+    taskStats: { ttl: 120, prefix: 'dashboard:taskStats:' },
+    accountStats: { ttl: 120, prefix: 'dashboard:accountStats:' }
+  }
+}));
+
+// Mock pino logger
+jest.mock('pino', () => {
+  return jest.fn(() => ({
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn()
+  }));
+});
+
+describe('Dashboard API', () => {
+  let app: Express;
+  let mockMatrixManager: jest.Mocked<MatrixManager>;
+  let mockMetricsCollector: jest.Mocked<MetricsCollector>;
+  let mockAccountManager: any;
+  let mockQueueManager: any;
+
+  beforeEach(() => {
+    // Clear all mocks
+    jest.clearAllMocks();
+
+    // Create mock managers
+    mockAccountManager = {
+      getAccountStats: jest.fn(),
+      listAccounts: jest.fn()
+    };
+
+    mockQueueManager = {
+      getStats: jest.fn()
+    };
+
+    // Setup mock implementations
+    mockMatrixManager = {
+      getAccountManager: jest.fn().mockReturnValue(mockAccountManager),
+      getQueueManager: jest.fn().mockReturnValue(mockQueueManager)
+    } as any;
+
+    mockMetricsCollector = {
+      getCurrentMetrics: jest.fn(),
+      getHistoricalMetrics: jest.fn()
+    } as any;
+
+    // Create Express app with dashboard routes
+    app = express();
+    app.use(express.json());
+    
+    const config: DashboardConfig = {
+      matrixManager: mockMatrixManager,
+      metricsCollector: mockMetricsCollector
+    };
+    
+    app.use('/api/v1/dashboard', createDashboardRoutes(config));
+  });
+
+  describe('GET /api/v1/dashboard/metrics', () => {
+    it('should return dashboard metrics with all data', async () => {
+      // Setup mock data
+      mockAccountManager.getAccountStats.mockResolvedValue({
+        total: 10,
+        active: 7,
+        disabled: 2,
+        error: 1
+      });
+
+      mockQueueManager.getStats.mockResolvedValue({
+        waiting: 5,
+        active: 2,
+        completed: 100,
+        failed: 10,
+        delayed: 3
+      });
+
+      mockMetricsCollector.getCurrentMetrics.mockResolvedValue({
+        uploads: {
+          total24h: 110,
+          successful24h: 100,
+          failed24h: 10,
+          averageDuration: 125.5,
+          throughput: 4.58
+        },
+        accounts: {
+          total: 10,
+          active: 7,
+          healthy: 6,
+          suspended: 1,
+          utilizationRate: 70
+        },
+        browsers: {
+          total: 5,
+          active: 2,
+          idle: 3,
+          error: 0,
+          utilizationRate: 40
+        },
+        queue: {
+          depth: 5,
+          processingRate: 2,
+          averageWaitTime: 300,
+          backlog: 0
+        },
+        resources: {
+          memoryUsage: 512,
+          cpuUsage: 45.5,
+          redisMemory: 128,
+          dbConnections: 10
+        },
+        errors: {
+          rate24h: 0.42,
+          byCategory: { network: 5, auth: 3, upload: 2 },
+          topErrors: []
+        }
+      });
+
+      const response = await request(app)
+        .get('/api/v1/dashboard/metrics')
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        totalAccounts: 10,
+        activeAccounts: 7,
+        totalUploads: 110,
+        successfulUploads: 100,
+        failedUploads: 10,
+        queuedUploads: 5,
+        uploadSuccessRate: expect.any(Number),
+        averageUploadTime: expect.any(Number),
+        systemLoad: 45.5,
+        memoryUsage: 62.3,
+        uploadsLast24Hours: expect.any(Array),
+        uploadDistribution: expect.any(Array)
+      });
+
+      expect(response.body.uploadSuccessRate).toBeCloseTo(90.91, 1);
+      expect(response.body.uploadsLast24Hours).toHaveLength(24);
+      expect(response.body.uploadDistribution).toHaveLength(3);
+    });
+
+    it('should handle errors when getting account stats', async () => {
+      mockAccountManager.getAccountStats.mockRejectedValue(new Error('Account stats error'));
+      mockQueueManager.getStats.mockResolvedValue({
+        waiting: 0,
+        active: 0,
+        completed: 0,
+        failed: 0
+      });
+
+      const response = await request(app)
+        .get('/api/v1/dashboard/metrics')
+        .expect(200);
+
+      expect(response.body.totalAccounts).toBe(0);
+      expect(response.body.activeAccounts).toBe(0);
+    });
+
+    it('should handle errors when getting queue stats', async () => {
+      mockQueueManager.getStats.mockRejectedValue(new Error('Queue stats error'));
+      
+      const response = await request(app)
+        .get('/api/v1/dashboard/metrics')
+        .expect(200);
+
+      expect(response.body.totalUploads).toBe(0);
+      expect(response.body.queuedUploads).toBe(0);
+    });
+
+    it('should handle errors when getting system metrics', async () => {
+      mockMetricsCollector.getCurrentMetrics.mockRejectedValue(new Error('Metrics error'));
+      
+      const response = await request(app)
+        .get('/api/v1/dashboard/metrics')
+        .expect(200);
+
+      expect(response.body.systemLoad).toBe(0);
+      expect(response.body.memoryUsage).toBe(0);
+    });
+
+    it('should handle complete failure gracefully', async () => {
+      mockMatrixManager.getAccountManager.mockImplementation(() => {
+        throw new Error('Fatal error');
+      });
+
+      const response = await request(app)
+        .get('/api/v1/dashboard/metrics')
+        .expect(500);
+
+      expect(response.body).toEqual({
+        error: 'Failed to get dashboard metrics'
+      });
+    });
+  });
+
+  describe('Alerts API', () => {
+    describe('GET /api/v1/dashboard/alerts', () => {
+      beforeEach(() => {
+        // Clear alerts array by creating some test alerts
+        createSystemAlert('error', 'Test Error', 'This is a test error', { source: 'test' });
+        createSystemAlert('warning', 'Test Warning', 'This is a test warning');
+        createSystemAlert('info', 'Test Info', 'This is a test info');
+      });
+
+      it('should return all alerts with default limit', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        expect(response.body.alerts).toBeDefined();
+        expect(response.body.alerts.length).toBeLessThanOrEqual(50);
+        expect(response.body.unacknowledgedCount).toBeGreaterThanOrEqual(3);
+      });
+
+      it('should filter unacknowledged alerts', async () => {
+        // Acknowledge one alert first
+        const alertsResponse = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        const alertId = alertsResponse.body.alerts[0].id;
+        
+        await request(app)
+          .post(`/api/v1/dashboard/alerts/${alertId}/acknowledge`)
+          .expect(200);
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts?unacknowledged=true')
+          .expect(200);
+
+        const allAcknowledged = response.body.alerts.every((alert: any) => !alert.acknowledged);
+        expect(allAcknowledged).toBe(true);
+      });
+
+      it('should respect limit parameter', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts?limit=2')
+          .expect(200);
+
+        expect(response.body.alerts).toHaveLength(2);
+      });
+
+      it('should sort alerts by timestamp descending', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        const timestamps = response.body.alerts.map((a: any) => new Date(a.timestamp).getTime());
+        const sortedTimestamps = [...timestamps].sort((a, b) => b - a);
+        expect(timestamps).toEqual(sortedTimestamps);
+      });
+
+      it('should handle errors gracefully', async () => {
+        // Mock Array.prototype.filter to throw an error
+        const originalFilter = Array.prototype.filter;
+        Array.prototype.filter = jest.fn().mockImplementationOnce(() => {
+          throw new Error('Filter error');
+        });
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(500);
+
+        expect(response.body).toEqual({
+          error: 'Failed to get alerts'
+        });
+
+        // Restore original filter
+        Array.prototype.filter = originalFilter;
+      });
+    });
+
+    describe('POST /api/v1/dashboard/alerts/:id/acknowledge', () => {
+      it('should acknowledge an alert', async () => {
+        createSystemAlert('error', 'Test Alert', 'Test message');
+        
+        const alertsResponse = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        const alertId = alertsResponse.body.alerts[0].id;
+
+        const response = await request(app)
+          .post(`/api/v1/dashboard/alerts/${alertId}/acknowledge`)
+          .expect(200);
+
+        expect(response.body.acknowledged).toBe(true);
+        expect(response.body.id).toBe(alertId);
+      });
+
+      it('should return 404 for non-existent alert', async () => {
+        const response = await request(app)
+          .post('/api/v1/dashboard/alerts/non-existent-id/acknowledge')
+          .expect(404);
+
+        expect(response.body).toEqual({
+          error: 'Alert not found'
+        });
+      });
+    });
+
+    describe('DELETE /api/v1/dashboard/alerts/:id', () => {
+      it('should dismiss an alert', async () => {
+        createSystemAlert('info', 'Test Alert', 'To be deleted');
+        
+        const alertsResponse = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        const alertId = alertsResponse.body.alerts[0].id;
+        const initialCount = alertsResponse.body.alerts.length;
+
+        const response = await request(app)
+          .delete(`/api/v1/dashboard/alerts/${alertId}`)
+          .expect(200);
+
+        expect(response.body).toEqual({ success: true });
+
+        // Verify alert was deleted
+        const verifyResponse = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        expect(verifyResponse.body.alerts.length).toBe(initialCount - 1);
+        expect(verifyResponse.body.alerts.find((a: any) => a.id === alertId)).toBeUndefined();
+      });
+
+      it('should return 404 for non-existent alert', async () => {
+        const response = await request(app)
+          .delete('/api/v1/dashboard/alerts/non-existent-id')
+          .expect(404);
+
+        expect(response.body).toEqual({
+          error: 'Alert not found'
+        });
+      });
+    });
+
+    describe('POST /api/v1/dashboard/alerts/batch/acknowledge', () => {
+      it('should batch acknowledge multiple alerts', async () => {
+        // Create multiple alerts
+        createSystemAlert('error', 'Alert 1', 'Message 1');
+        createSystemAlert('warning', 'Alert 2', 'Message 2');
+        createSystemAlert('info', 'Alert 3', 'Message 3');
+
+        const alertsResponse = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        const alertIds = alertsResponse.body.alerts
+          .slice(0, 2)
+          .map((a: any) => a.id);
+
+        const response = await request(app)
+          .post('/api/v1/dashboard/alerts/batch/acknowledge')
+          .send({ ids: alertIds })
+          .expect(200);
+
+        expect(response.body).toEqual({
+          success: true,
+          acknowledgedCount: 2
+        });
+
+        // Verify alerts were acknowledged
+        const verifyResponse = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+
+        alertIds.forEach((id: string) => {
+          const alert = verifyResponse.body.alerts.find((a: any) => a.id === id);
+          expect(alert.acknowledged).toBe(true);
+        });
+      });
+
+      it('should handle invalid request body', async () => {
+        const response = await request(app)
+          .post('/api/v1/dashboard/alerts/batch/acknowledge')
+          .send({ ids: 'not-an-array' })
+          .expect(400);
+
+        expect(response.body).toEqual({
+          error: 'IDs must be an array'
+        });
+      });
+
+      it('should handle non-existent alert IDs gracefully', async () => {
+        const response = await request(app)
+          .post('/api/v1/dashboard/alerts/batch/acknowledge')
+          .send({ ids: ['non-existent-1', 'non-existent-2'] })
+          .expect(200);
+
+        expect(response.body).toEqual({
+          success: true,
+          acknowledgedCount: 0
+        });
+      });
+    });
+
+    describe('POST /api/v1/dashboard/alerts', () => {
+      it('should create a new alert', async () => {
+        const alertData = {
+          type: 'error',
+          title: 'New Alert',
+          message: 'This is a new alert',
+          metadata: { component: 'test', severity: 'high' }
+        };
+
+        const response = await request(app)
+          .post('/api/v1/dashboard/alerts')
+          .send(alertData)
+          .expect(201);
+
+        expect(response.body).toMatchObject({
+          type: alertData.type,
+          title: alertData.title,
+          message: alertData.message,
+          metadata: alertData.metadata,
+          acknowledged: false
+        });
+        expect(response.body.id).toBeDefined();
+        expect(response.body.timestamp).toBeDefined();
+      });
+
+      it('should validate required fields', async () => {
+        const response = await request(app)
+          .post('/api/v1/dashboard/alerts')
+          .send({ type: 'error' })
+          .expect(400);
+
+        expect(response.body).toEqual({
+          error: 'Type, title, and message are required'
+        });
+      });
+
+      it('should limit alerts to 1000', async () => {
+        // Create 1001 alerts
+        for (let i = 0; i < 1001; i++) {
+          createSystemAlert('info', `Alert ${i}`, `Message ${i}`);
+        }
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts?limit=2000')
+          .expect(200);
+
+        expect(response.body.alerts.length).toBeLessThanOrEqual(1000);
+      });
+    });
+  });
+
+  describe('Statistics APIs', () => {
+    describe('GET /api/v1/dashboard/stats/overview', () => {
+      it('should return overview statistics', async () => {
+        mockAccountManager.getAccountStats.mockResolvedValue({
+          total: 25,
+          active: 20,
+          disabled: 3,
+          error: 2
+        });
+
+        mockQueueManager.getStats.mockResolvedValue({
+          waiting: 10,
+          active: 5,
+          completed: 150,
+          failed: 15
+        });
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/stats/overview')
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          accounts: {
+            total: 25,
+            active: 20,
+            disabled: 3,
+            error: 2
+          },
+          tasks: {
+            total: 180,
+            queued: 10,
+            processing: 5,
+            completed: 150,
+            failed: 15
+          },
+          uploads: {
+            total: 150,
+            today: expect.any(Number),
+            thisWeek: expect.any(Number),
+            thisMonth: expect.any(Number)
+          },
+          performance: {
+            avgUploadTime: 0,
+            successRate: expect.any(Number),
+            errorRate: expect.any(Number)
+          }
+        });
+
+        expect(response.body.performance.successRate).toBeCloseTo(90.91, 1);
+        expect(response.body.performance.errorRate).toBeCloseTo(9.09, 1);
+      });
+
+      it('should handle manager errors gracefully', async () => {
+        mockAccountManager.getAccountStats.mockRejectedValue(new Error('Stats error'));
+        mockQueueManager.getStats.mockRejectedValue(new Error('Queue error'));
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/stats/overview')
+          .expect(200);
+
+        expect(response.body.accounts.total).toBe(0);
+        expect(response.body.tasks.total).toBe(0);
+      });
+    });
+
+    describe('GET /api/v1/dashboard/stats/tasks', () => {
+      it('should return task statistics with timeline', async () => {
+        mockQueueManager.getStats.mockResolvedValue({
+          waiting: 20,
+          active: 5,
+          completed: 200,
+          failed: 25,
+          delayed: 10
+        });
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/stats/tasks?range=24h')
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          summary: {
+            total: 260,
+            byStatus: {
+              waiting: 20,
+              active: 5,
+              completed: 200,
+              failed: 25,
+              delayed: 10
+            }
+          },
+          timeline: expect.any(Array),
+          byPriority: {
+            high: 0,
+            normal: 0,
+            low: 0
+          },
+          averageProcessingTime: 0,
+          throughput: {
+            perMinute: expect.any(Number),
+            perHour: expect.any(Number),
+            perDay: 200
+          }
+        });
+
+        expect(response.body.timeline.length).toBeGreaterThan(0);
+      });
+
+      it('should handle different time ranges', async () => {
+        mockQueueManager.getStats.mockResolvedValue({
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0
+        });
+
+        const ranges = ['24h', '7d', '30d'];
+        
+        for (const range of ranges) {
+          const response = await request(app)
+            .get(`/api/v1/dashboard/stats/tasks?range=${range}`)
+            .expect(200);
+
+          expect(response.body.timeline).toBeDefined();
+          expect(response.body.timeline.length).toBeGreaterThan(0);
+        }
+      });
+    });
+
+    describe('GET /api/v1/dashboard/stats/accounts', () => {
+      it('should return account statistics with health distribution', async () => {
+        const mockAccounts = [
+          { id: '1', email: 'test1@example.com', healthScore: 90, dailyUploadCount: 50, lastUploadTime: new Date('2024-01-01') },
+          { id: '2', email: 'test2@example.com', healthScore: 70, dailyUploadCount: 30, lastUploadTime: new Date('2024-01-02') },
+          { id: '3', email: 'test3@example.com', healthScore: 50, dailyUploadCount: 20, lastUploadTime: null },
+          { id: '4', email: 'test4@example.com', healthScore: 30, dailyUploadCount: 10, lastUploadTime: new Date('2024-01-03') }
+        ];
+
+        mockAccountManager.getAccountStats.mockResolvedValue({
+          total: 4,
+          active: 3,
+          disabled: 1,
+          error: 0
+        });
+
+        mockAccountManager.listAccounts.mockResolvedValue(mockAccounts);
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/stats/accounts')
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          summary: {
+            total: 4,
+            byStatus: {
+              active: 3,
+              disabled: 1,
+              error: 0,
+              cooldown: 0
+            }
+          },
+          health: {
+            excellent: 1,
+            good: 1,
+            fair: 1,
+            poor: 1
+          },
+          activity: expect.any(Array),
+          performance: {
+            avgHealthScore: 60,
+            avgUploadsPerAccount: 27.5,
+            mostActive: expect.any(Object)
+          }
+        });
+
+        expect(response.body.activity[0].uploads).toBe(50);
+        expect(response.body.performance.mostActive.email).toBe('test1@example.com');
+      });
+
+      it('should handle empty account list', async () => {
+        mockAccountManager.getAccountStats.mockResolvedValue({
+          total: 0,
+          active: 0,
+          disabled: 0,
+          error: 0
+        });
+
+        mockAccountManager.listAccounts.mockResolvedValue([]);
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/stats/accounts')
+          .expect(200);
+
+        expect(response.body.performance.avgHealthScore).toBe(0);
+        expect(response.body.performance.avgUploadsPerAccount).toBe(0);
+        expect(response.body.performance.mostActive).toBeNull();
+      });
+    });
+
+    describe('GET /api/v1/dashboard/stats/performance', () => {
+      it('should return performance metrics with timeline', async () => {
+        mockMetricsCollector.getCurrentMetrics.mockResolvedValue({
+          uploads: {
+            total24h: 100,
+            successful24h: 90,
+            failed24h: 10,
+            averageDuration: 120,
+            throughput: 4.17
+          },
+          accounts: {
+            total: 10,
+            active: 8,
+            healthy: 7,
+            suspended: 0,
+            utilizationRate: 80
+          },
+          browsers: {
+            total: 5,
+            active: 3,
+            idle: 2,
+            error: 0,
+            utilizationRate: 60
+          },
+          queue: {
+            depth: 10,
+            processingRate: 3,
+            averageWaitTime: 200,
+            backlog: 2
+          },
+          resources: {
+            memoryUsage: 768,
+            cpuUsage: 55.5,
+            redisMemory: 256,
+            dbConnections: 15
+          },
+          errors: {
+            rate24h: 0.5,
+            byCategory: { network: 8, auth: 2 },
+            topErrors: []
+          }
+        });
+
+        mockMetricsCollector.getHistoricalMetrics.mockResolvedValue([
+          { resources: { cpuUsage: 50, memoryUsage: 65 } },
+          { resources: { cpuUsage: 60, memoryUsage: 75 } },
+          { resources: { cpuUsage: 55, memoryUsage: 70 } }
+        ]);
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/stats/performance?range=1h')
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          system: {
+            cpu: {
+              current: 55.5,
+              average: 55,
+              peak: 60
+            },
+            memory: {
+              current: 70.2,
+              average: 70,
+              peak: 75,
+              total: 0
+            },
+            uptime: expect.any(Number)
+          },
+          uploads: {
+            avgProcessingTime: 0,
+            successRate: 0,
+            errorRate: 0,
+            throughput: {
+              current: 0,
+              average: 0,
+              peak: 0
+            }
+          },
+          timeline: expect.any(Array)
+        });
+      });
+
+      it('should handle missing metrics gracefully', async () => {
+        mockMetricsCollector.getCurrentMetrics.mockRejectedValue(new Error('Metrics error'));
+        mockMetricsCollector.getHistoricalMetrics.mockResolvedValue([]);
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/stats/performance')
+          .expect(200);
+
+        expect(response.body.system.cpu.current).toBe(0);
+        expect(response.body.system.memory.current).toBe(0);
+      });
+    });
+  });
+
+  describe('Chart APIs', () => {
+    describe('GET /api/v1/dashboard/charts/timeseries', () => {
+      it('should return time series data for uploads metric', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/charts/timeseries?metric=uploads&range=24h')
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          metric: 'uploads',
+          range: '24h',
+          interval: '1h',
+          series: expect.any(Array)
+        });
+
+        expect(response.body.series.length).toBeGreaterThan(0);
+        expect(response.body.series[0]).toHaveProperty('time');
+        expect(response.body.series[0]).toHaveProperty('value');
+      });
+
+      it('should support different metrics', async () => {
+        const metrics = ['uploads', 'accounts', 'cpu', 'memory', 'errors'];
+
+        for (const metric of metrics) {
+          const response = await request(app)
+            .get(`/api/v1/dashboard/charts/timeseries?metric=${metric}`)
+            .expect(200);
+
+          expect(response.body.metric).toBe(metric);
+          expect(response.body.series).toBeDefined();
+        }
+      });
+
+      it('should auto-calculate interval based on range', async () => {
+        const testCases = [
+          { range: '24h', expectedInterval: '1h' },
+          { range: '7d', expectedInterval: '6h' },
+          { range: '30d', expectedInterval: '1d' }
+        ];
+
+        for (const testCase of testCases) {
+          const response = await request(app)
+            .get(`/api/v1/dashboard/charts/timeseries?range=${testCase.range}`)
+            .expect(200);
+
+          expect(response.body.interval).toBe(testCase.expectedInterval);
+        }
+      });
+
+      it('should use custom interval when provided', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/charts/timeseries?interval=2')
+          .expect(200);
+
+        expect(response.body.interval).toBe('2');
+      });
+    });
+
+    describe('GET /api/v1/dashboard/charts/distribution', () => {
+      it('should return distribution data for uploads', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/charts/distribution?type=uploads')
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          type: 'uploads',
+          data: expect.any(Array)
+        });
+
+        expect(response.body.data).toHaveLength(3);
+        response.body.data.forEach((item: any) => {
+          expect(item).toHaveProperty('label');
+          expect(item).toHaveProperty('value');
+          expect(item).toHaveProperty('percentage');
+        });
+      });
+
+      it('should support different distribution types', async () => {
+        const types = ['uploads', 'accounts', 'tasks'];
+
+        for (const type of types) {
+          const response = await request(app)
+            .get(`/api/v1/dashboard/charts/distribution?type=${type}`)
+            .expect(200);
+
+          expect(response.body.type).toBe(type);
+          expect(response.body.data).toBeDefined();
+          expect(response.body.data.length).toBeGreaterThan(0);
+        }
+      });
+    });
+
+    describe('GET /api/v1/dashboard/charts/trends', () => {
+      it('should return trend analysis for multiple metrics', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/charts/trends?metrics=uploads,errors&range=7d')
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          range: '7d',
+          metrics: expect.any(Object)
+        });
+
+        expect(response.body.metrics.uploads).toMatchObject({
+          current: expect.any(Number),
+          previous: expect.any(Number),
+          change: expect.any(Number),
+          trend: expect.stringMatching(/^(up|down|stable)$/)
+        });
+
+        expect(response.body.metrics.errors).toBeDefined();
+      });
+
+      it('should calculate trend direction correctly', async () => {
+        const response = await request(app)
+          .get('/api/v1/dashboard/charts/trends?metrics=test')
+          .expect(200);
+
+        const metric = response.body.metrics.test;
+        
+        if (metric.change > 5) {
+          expect(metric.trend).toBe('up');
+        } else if (metric.change < -5) {
+          expect(metric.trend).toBe('down');
+        } else {
+          expect(metric.trend).toBe('stable');
+        }
+      });
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle null managers gracefully', async () => {
+      const app = express();
+      app.use(express.json());
+      
+      const config: DashboardConfig = {
+        matrixManager: null as any,
+        metricsCollector: null as any
+      };
+      
+      app.use('/api/v1/dashboard', createDashboardRoutes(config));
+
+      const response = await request(app)
+        .get('/api/v1/dashboard/metrics')
+        .expect(200);
+
+      expect(response.body.totalAccounts).toBe(0);
+      expect(response.body.systemLoad).toBe(0);
+    });
+  });
+
+  describe('Helper Functions', () => {
+    describe('createSystemAlert', () => {
+      it('should create alerts with proper structure', async () => {
+        createSystemAlert('error', 'Test Title', 'Test Message', { custom: 'data' });
+
+        // Get the alert to verify
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts')
+          .expect(200);
+          
+        const latestAlert = response.body.alerts[0];
+        expect(latestAlert).toMatchObject({
+          type: 'error',
+          title: 'Test Title',
+          message: 'Test Message',
+          acknowledged: false,
+          metadata: { custom: 'data' }
+        });
+        expect(latestAlert.id).toMatch(/^alert-\d+-\w+$/);
+        expect(new Date(latestAlert.timestamp)).toBeInstanceOf(Date);
+      });
+
+      it('should maintain a maximum of 1000 alerts', async () => {
+        // Create 1005 alerts
+        for (let i = 0; i < 1005; i++) {
+          createSystemAlert('info', `Alert ${i}`, `Message ${i}`);
+        }
+
+        const response = await request(app)
+          .get('/api/v1/dashboard/alerts?limit=2000')
+          .expect(200);
+          
+        expect(response.body.alerts.length).toBeLessThanOrEqual(1000);
+      });
+    });
+  });
+});

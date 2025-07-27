@@ -3,7 +3,7 @@ import type { ApiResponse, PaginatedResponse } from '@/types';
 
 // Task types matching backend
 export type TaskType = 'upload' | 'update' | 'comment' | 'analytics';
-export type TaskStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused';
 export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export interface Task {
@@ -20,6 +20,7 @@ export interface Task {
   error?: string;
   progress?: number;
   attempts?: number;
+  maxAttempts?: number;
   metadata?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
@@ -140,9 +141,18 @@ export const tasksApi = baseApi.injectEndpoints({
           type: params.type || 'upload', // Default to upload tasks
         },
       }),
-      transformResponse: (response: PaginatedResponse<Task>) => {
+      transformResponse: (response: ApiResponse<Task[]> & { pagination?: any }) => {
+        // Handle backend response format
+        const data = response.data || [];
+        const pagination = response.pagination || {
+          page: 1,
+          pageSize: 100,
+          total: data.length,
+          totalPages: 1
+        };
+        
         // Add computed fields for UI
-        const items = response.items.map(task => ({
+        const items = data.map(task => ({
           ...task,
           title: task.video?.title || task.title,
           description: task.video?.description || task.description,
@@ -150,7 +160,14 @@ export const tasksApi = baseApi.injectEndpoints({
           videoUrl: task.result?.videoUrl || task.videoUrl,
           thumbnailUrl: task.video?.thumbnail || task.thumbnailUrl,
         }));
-        return { ...response, items };
+        
+        return {
+          items,
+          total: pagination.total,
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          hasMore: pagination.page < pagination.totalPages
+        };
       },
       providesTags: (result) =>
         result
@@ -203,6 +220,30 @@ export const tasksApi = baseApi.injectEndpoints({
         body: data,
       }),
       invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Task', id },
+        { type: 'Task', id: 'LIST' },
+      ],
+    }),
+
+    // Pause task
+    pauseTask: builder.mutation<Task, string>({
+      query: (id) => ({
+        url: `/v1/tasks/${id}/pause`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Task', id },
+        { type: 'Task', id: 'LIST' },
+      ],
+    }),
+
+    // Resume task
+    resumeTask: builder.mutation<Task, string>({
+      query: (id) => ({
+        url: `/v1/tasks/${id}/resume`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
         { type: 'Task', id },
         { type: 'Task', id: 'LIST' },
       ],
@@ -267,9 +308,25 @@ export const tasksApi = baseApi.injectEndpoints({
           type: 'upload',
         },
       }),
-      transformResponse: (response: PaginatedResponse<Task>) => {
-        const items = response.items.map(transformTaskToUpload);
-        return { ...response, items };
+      transformResponse: (response: ApiResponse<Task[]> & { pagination?: any }) => {
+        // Handle backend response format
+        const data = response.data || [];
+        const pagination = response.pagination || {
+          page: 1,
+          pageSize: 100,
+          total: data.length,
+          totalPages: 1
+        };
+        
+        const items = data.map(transformTaskToUpload);
+        
+        return {
+          items,
+          total: pagination.total,
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          hasMore: pagination.page < pagination.totalPages
+        };
       },
       providesTags: ['Upload'],
     }),
@@ -339,6 +396,8 @@ export const {
   useCreateTaskMutation,
   useBatchCreateTasksMutation,
   useUpdateTaskMutation,
+  usePauseTaskMutation,
+  useResumeTaskMutation,
   useCancelTaskMutation,
   useRetryTaskMutation,
   useGetTaskProgressQuery,

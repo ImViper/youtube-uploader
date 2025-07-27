@@ -73,6 +73,7 @@ interface Alert {
 export class WebSocketManager {
   private io: SocketIOServer;
   private connections: Map<string, any> = new Map();
+  private heartbeatInterval: NodeJS.Timeout | null = null;
 
   constructor(server: HttpServer) {
     this.io = new SocketIOServer(server, {
@@ -307,7 +308,7 @@ export class WebSocketManager {
 
   // Setup heartbeat mechanism
   private setupHeartbeat() {
-    setInterval(() => {
+    this.heartbeatInterval = setInterval(() => {
       const now = Date.now();
       for (const [socketId, conn] of this.connections.entries()) {
         if (conn.lastPing && now - conn.lastPing > 60000) {
@@ -321,6 +322,23 @@ export class WebSocketManager {
         }
       }
     }, 30000); // Check every 30 seconds
+  }
+
+  // Close the WebSocket server and clean up resources
+  close(callback?: () => void) {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    
+    // Close all connections
+    for (const [socketId, conn] of this.connections.entries()) {
+      conn.socket.disconnect(true);
+    }
+    this.connections.clear();
+    
+    // Close the Socket.IO server
+    this.io.close(callback);
   }
 }
 

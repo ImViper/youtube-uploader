@@ -8,7 +8,7 @@ import { settingsApi } from '@/features/settings/settingsApi';
 
 // Mock server
 const server = setupServer(
-  http.get('http://localhost:3000/api/settings', () => {
+  http.get('http://localhost:3000/api/v1/settings', () => {
     return HttpResponse.json({
       upload: {
         defaultPrivacy: 'private',
@@ -48,7 +48,7 @@ const server = setupServer(
       },
     });
   }),
-  http.patch('http://localhost:3000/api/settings', async ({ request }) => {
+  http.patch('http://localhost:3000/api/v1/settings', async ({ request }) => {
     const body = await request.json();
     return HttpResponse.json({
       success: true,

@@ -14,7 +14,7 @@ import { z } from 'zod';
 
 export function createTaskRoutes(queueManager?: QueueManager): Router {
   const router = Router();
-  const taskService = new TaskService();
+  const taskService = new TaskService(queueManager);
   const taskController = new TaskController(taskService);
 
   // Create a new task
@@ -79,6 +79,20 @@ export function createTaskRoutes(queueManager?: QueueManager): Router {
       body: updateTaskSchema 
     }),
     taskController.updateTask.bind(taskController)
+  );
+
+  // Pause a task
+  router.post(
+    '/:id/pause',
+    validate({ params: z.object({ id: z.string().uuid() }) }),
+    taskController.pauseTask.bind(taskController)
+  );
+
+  // Resume a paused task
+  router.post(
+    '/:id/resume',
+    validate({ params: z.object({ id: z.string().uuid() }) }),
+    taskController.resumeTask.bind(taskController)
   );
 
   // Cancel a task

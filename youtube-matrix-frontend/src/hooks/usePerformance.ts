@@ -18,7 +18,7 @@ interface UsePerformanceOptions {
  */
 export function usePerformance(componentName: string, options: UsePerformanceOptions = {}) {
   const {
-    enableLogging = process.env.NODE_ENV === 'development',
+    enableLogging = import.meta.env.DEV,
     threshold = 16, // 16ms = 60fps
     onSlowRender,
   } = options;
@@ -130,7 +130,7 @@ export function useMountPerformance(componentName: string) {
       const unmountTime = performance.now();
       const lifetimeMs = unmountTime - mountTime.current;
 
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         console.log(`[Performance] ${componentName} lifetime: ${lifetimeMs.toFixed(2)}ms`);
       }
     };
@@ -158,7 +158,7 @@ export function useAsyncPerformance() {
     const duration = endTime - startTime;
     measurements.current.delete(label);
 
-    if (log && process.env.NODE_ENV === 'development') {
+    if (log && import.meta.env.DEV) {
       console.log(`[Performance] ${label}: ${duration.toFixed(2)}ms`);
     }
 

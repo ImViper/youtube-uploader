@@ -34,6 +34,8 @@ const useUpdateUploadMutation = () => {
 
 const useCancelUploadMutation = () => tasksApi.useCancelTaskMutation();
 const useRetryUploadMutation = () => tasksApi.useRetryTaskMutation();
+const usePauseUploadMutation = () => tasksApi.usePauseTaskMutation();
+const useResumeUploadMutation = () => tasksApi.useResumeTaskMutation();
 const useDeleteUploadMutation = () => {
   // Note: Task API doesn't have delete, might need to implement or use cancel
   return tasksApi.useCancelTaskMutation();
@@ -68,7 +70,8 @@ function mapTaskStatusToUploadStatus(status: string): string {
     'processing': 'uploading',
     'completed': 'completed',
     'failed': 'failed',
-    'cancelled': 'cancelled'
+    'cancelled': 'cancelled',
+    'paused': 'paused'
   };
   return statusMap[status] || status;
 }
@@ -111,6 +114,8 @@ export {
   useUpdateUploadMutation,
   useCancelUploadMutation,
   useRetryUploadMutation,
+  usePauseUploadMutation,
+  useResumeUploadMutation,
   useDeleteUploadMutation,
 };
 

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Card, Button, Space, message, Modal, Select } from 'antd';
-import { CloudUploadOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import {
   useGetUploadsQuery,
   useCreateUploadMutation,
   useCancelUploadMutation,
   useRetryUploadMutation,
+  usePauseUploadMutation,
+  useResumeUploadMutation,
 } from '@/features/uploads/uploadsApi';
 import { useGetAccountsQuery } from '@/features/accounts/accountsApi';
 import {
@@ -33,6 +35,8 @@ const UploadsPage: React.FC = () => {
   const [createUpload] = useCreateUploadMutation();
   const [cancelUpload] = useCancelUploadMutation();
   const [retryUpload] = useRetryUploadMutation();
+  const [pauseUpload] = usePauseUploadMutation();
+  const [resumeUpload] = useResumeUploadMutation();
 
   const uploads = uploadsData?.items || [];
   const activeAccounts = accountsData?.items.filter((a) => a.status === 'active') || [];
@@ -96,6 +100,24 @@ const UploadsPage: React.FC = () => {
       message.success('已取消上传');
     } catch {
       message.error('取消失败');
+    }
+  };
+
+  const handlePauseUpload = async (id: string) => {
+    try {
+      await pauseUpload(id).unwrap();
+      message.success('已暂停上传');
+    } catch {
+      message.error('暂停失败');
+    }
+  };
+
+  const handleResumeUpload = async (id: string) => {
+    try {
+      await resumeUpload(id).unwrap();
+      message.success('已恢复上传');
+    } catch {
+      message.error('恢复失败');
     }
   };
 
@@ -163,8 +185,8 @@ const UploadsPage: React.FC = () => {
         <Card title="上传进度">
           <UploadsList
             uploads={uploads}
-            onPause={() => message.info('暂停功能开发中')}
-            onResume={() => message.info('恢复功能开发中')}
+            onPause={handlePauseUpload}
+            onResume={handleResumeUpload}
             onCancel={handleCancelUpload}
             onRetry={handleRetryUpload}
           />

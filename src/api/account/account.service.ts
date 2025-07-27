@@ -42,6 +42,8 @@ export class AccountService {
    */
   async create(accountData: any) {
     try {
+      logger.info({ accountData }, 'Creating account with data');
+      
       // Check if account already exists
       const existingAccounts = await this.accountManager.listAccounts({});
       const exists = existingAccounts.some(acc => acc.email === accountData.email);
@@ -56,6 +58,7 @@ export class AccountService {
         {
           proxy: accountData.proxy,
           dailyUploadLimit: accountData.dailyUploadLimit,
+          browserWindowName: accountData.browserWindowName,
           ...accountData.metadata
         }
       );
@@ -73,11 +76,15 @@ export class AccountService {
    */
   async findAll(options: PaginationOptions) {
     try {
+      logger.info({ options }, 'Finding accounts with options');
+      
       let accounts = await this.accountManager.listAccounts({
         status: options.status === 'all' ? undefined : options.status,
         minHealthScore: options.minHealthScore,
         hasAvailableUploads: options.hasAvailableUploads
       });
+      
+      logger.info({ accountCount: accounts.length }, 'Retrieved accounts from manager');
 
       // Apply search filter
       if (options.search) {
@@ -115,22 +122,28 @@ export class AccountService {
         }
       });
 
-      // Apply pagination
+      // Apply pagination with default values if needed
+      const page = options.page || 1;
+      const pageSize = options.pageSize || 20;
       const total = accounts.length;
-      const totalPages = Math.ceil(total / options.pageSize);
-      const startIndex = (options.page - 1) * options.pageSize;
-      const endIndex = startIndex + options.pageSize;
+      const totalPages = Math.ceil(total / pageSize);
+      const startIndex = (page - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
       const paginatedItems = accounts.slice(startIndex, endIndex);
 
       return {
         items: paginatedItems.map(acc => this.sanitizeAccount(acc)),
-        page: options.page,
-        pageSize: options.pageSize,
+        page: page,
+        pageSize: pageSize,
         total,
         totalPages
       };
-    } catch (error) {
-      logger.error({ error }, 'Failed to find accounts');
+    } catch (error: any) {
+      logger.error({ 
+        error: error.message,
+        stack: error.stack,
+        options
+      }, 'Failed to find accounts');
       throw error;
     }
   }
@@ -396,25 +409,43 @@ export class AccountService {
    * Sanitize account data to remove sensitive information
    */
   private sanitizeAccount(account: any) {
-    return {
-      id: account.id,
-      username: account.email.split('@')[0],
-      email: account.email,
-      status: account.status,
-      healthScore: account.healthScore,
-      dailyUploadCount: account.dailyUploadCount,
-      dailyUploadLimit: account.dailyUploadLimit,
-      lastActive: account.lastUploadTime,
-      createdAt: account.createdAt || new Date().toISOString(),
-      proxy: (account as any).proxy ? { 
-        host: (account as any).proxy.host, 
-        port: (account as any).proxy.port 
-      } : undefined,
-      metadata: {
-        notes: account.metadata?.notes,
-        tags: account.metadata?.tags
+    try {
+      const sanitized = {
+        id: account.id,
+        username: account.email ? account.email.split('@')[0] : 'unknown',
+        email: account.email || '',
+        status: account.status || 'active',
+        healthScore: account.healthScore || 100,
+        dailyUploadCount: account.dailyUploadCount || 0,
+        dailyUploadLimit: account.dailyUploadLimit || 10,
+        lastActive: account.lastUploadTime || null,
+        createdAt: account.createdAt || new Date().toISOString(),
+        browserWindowName: account.bitbrowserWindowName || null,
+        proxy: undefined as any,
+        metadata: {
+          notes: account.metadata?.notes || '',
+          tags: account.metadata?.tags || []
+        }
+      };
+      
+      // Safely add proxy if it exists (could be in root or metadata)
+      const proxyData = account.proxy || account.metadata?.proxy;
+      if (proxyData && typeof proxyData === 'object') {
+        sanitized.proxy = {
+          host: proxyData.host || '',
+          port: proxyData.port || 0
+        };
       }
-    };
+      
+      return sanitized;
+    } catch (error: any) {
+      logger.error({ 
+        accountId: account?.id,
+        error: error.message,
+        stack: error.stack 
+      }, 'Failed to sanitize account');
+      throw error;
+    }
   }
 
   /**

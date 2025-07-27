@@ -31,7 +31,21 @@ export function createAccountRoutes(accountManager: AccountManager): Router {
     validate({ 
       query: paginationSchema.merge(accountFilterSchema) 
     }),
-    (req, res) => accountController.getAccounts(req, res)
+    async (req, res) => {
+      try {
+        console.log('Accounts route hit, query:', req.query);
+        await accountController.getAccounts(req, res);
+      } catch (error: any) {
+        console.error('Route error:', error);
+        console.error('Stack:', error.stack);
+        res.status(500).json({ 
+          success: false, 
+          error: 'Route handler error',
+          message: error.message,
+          stack: error.stack 
+        });
+      }
+    }
   );
 
   // Get account statistics

@@ -149,18 +149,86 @@ export class MatrixManager {
       // Initialize retry handler
       this.retryHandler = new RetryHandler(this.deadLetterQueue);
 
+      // Initialize a basic upload worker without BitBrowser
+      // This worker will process database updates and queue management
+      await this.initializeWorker();
+
       // Lazy initialization: Don't initialize BitBrowser until needed
-      logger.info('Skipping BitBrowser initialization - will initialize on first use');
+      logger.info('BitBrowser will be initialized on first use');
 
       // Setup event listeners
       this.setupEventListeners();
 
       this.isInitialized = true;
-      logger.info('Matrix manager initialized successfully (without BitBrowser)');
+      logger.info('Matrix manager initialized successfully with basic worker');
 
     } catch (error) {
       logger.error({ error }, 'Failed to initialize matrix manager');
       throw error;
+    }
+  }
+
+  /**
+   * Initialize basic worker for queue processing
+   */
+  private async initializeWorker(): Promise<void> {
+    logger.info('Initializing basic upload worker');
+    
+    try {
+      // Create a temporary worker that will handle queue status updates
+      // The actual upload will be deferred until BitBrowser is initialized
+      const { Worker } = require('bullmq') as typeof import('bullmq');
+      const connection = {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '5988'),
+        password: process.env.REDIS_PASSWORD
+      };
+      
+      // Create a basic worker that updates task status
+      const basicWorker = new Worker<any>(
+        'youtube-uploads',
+        async (job) => {
+          logger.info({ jobId: job.id, taskId: job.data.id }, 'Basic worker received job - initializing full worker');
+          
+          // Update task status to processing in database
+          try {
+            await this.db.query(
+              `UPDATE upload_tasks 
+               SET status = 'processing', started_at = NOW() 
+               WHERE id = $1`,
+              [job.data.id]
+            );
+          } catch (error) {
+            logger.error({ error, taskId: job.data.id }, 'Failed to update task status');
+          }
+          
+          // Initialize browser components if not already done
+          await this.initializeBrowserIfNeeded();
+          
+          // Stop this basic worker now that the full worker is initialized
+          if (this.isBrowserInitialized && this.uploadWorker) {
+            logger.info('Full worker initialized, stopping basic worker');
+            await basicWorker.close();
+            (this as any).basicWorker = null;
+          }
+          
+          // Return minimal result - the real worker will handle the actual upload
+          return { status: 'handed_off_to_full_worker' };
+        },
+        {
+          connection,
+          concurrency: 1,
+          autorun: true
+        }
+      );
+      
+      // Store reference for cleanup
+      (this as any).basicWorker = basicWorker;
+      
+      logger.info('Basic worker initialized - will initialize full worker on first job');
+    } catch (error) {
+      logger.error({ error }, 'Failed to initialize basic worker');
+      // Don't throw - worker initialization is not critical for API functionality
     }
   }
 
@@ -526,6 +594,12 @@ export class MatrixManager {
         this.accountMonitor.stop();
       }
 
+      // Shutdown basic worker if still running
+      if ((this as any).basicWorker) {
+        await (this as any).basicWorker.close();
+        (this as any).basicWorker = null;
+      }
+
       // Shutdown worker if initialized
       if (this.isBrowserInitialized && this.uploadWorker) {
         await this.uploadWorker.shutdown();
@@ -567,6 +641,10 @@ export class MatrixManager {
    * Get account manager instance
    */
   getAccountManager(): AccountManager {
+    if (!this.accountManager) {
+      logger.warn('AccountManager not initialized, creating new instance');
+      this.accountManager = new AccountManager();
+    }
     return this.accountManager;
   }
 

@@ -20,7 +20,7 @@
     "bcrypt": "^5.1.1",
     "bullmq": "^5.1.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0",
+    "express": "5.1.0",
     "fs-extra": "^11.2.0",
     "ioredis": "^5.3.2",
     "jsonwebtoken": "^9.0.2",
@@ -40,7 +40,7 @@
     "url": "git+https://github.com/fawazahmed0/youtube-uploader.git"
   },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p . && npm run copy:sql",
     "prepare": "npm run build",
     "format": "prettier --config .prettierrc \"src/**/*.ts\" --write",
     "start": "node dist/server.js",
@@ -52,7 +52,9 @@
     "test:watch": "jest --watch",
     "init:browsers": "npm run build && node dist/scripts/init-browser-profiles.js",
     "check:browsers": "npm run build && node dist/scripts/check-browser-status.js",
-    "db:migrate": "node dist/database/migrate.js",
+    "db:migrate": "node dist/database/run-migrations.js",
+    "build:all": "npm run build && npm run copy:sql",
+    "copy:sql": "node scripts/copy-sql.js",
     "test:coverage": "jest --coverage",
     "test:task": "jest src/api/task/__tests__",
     "test:task:coverage": "jest src/api/task/__tests__ --coverage"

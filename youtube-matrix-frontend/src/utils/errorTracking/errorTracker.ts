@@ -1,7 +1,15 @@
-interface ErrorContext {
+export interface ErrorContext {
   tags?: Record<string, string>;
   extra?: Record<string, any>;
 }
+
+export const ErrorLevel = {
+  ERROR: 'error',
+  WARNING: 'warning',
+  INFO: 'info'
+} as const;
+
+export type ErrorLevelType = typeof ErrorLevel[keyof typeof ErrorLevel];
 
 export interface ErrorReport {
   message: string;

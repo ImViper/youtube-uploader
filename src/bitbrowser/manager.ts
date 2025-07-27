@@ -1,6 +1,7 @@
 import puppeteer from 'puppeteer-extra';
 import { Browser, Page } from 'puppeteer';
 import { BitBrowserApiClient } from './api-client';
+import { WindowMatcher } from './window-matcher';
 import { getDatabase } from '../database/connection';
 import pino from 'pino';
 
@@ -35,6 +36,7 @@ export interface BrowserInstance {
 
 export class BitBrowserManager {
   private apiClient: BitBrowserApiClient;
+  private windowMatcher: WindowMatcher;
   private instances: Map<string, BrowserInstance>;
   private config: BitBrowserConfig;
   private db = getDatabase();
@@ -55,11 +57,34 @@ export class BitBrowserManager {
       retryDelay: this.config.retryDelay,
     });
 
+    this.windowMatcher = new WindowMatcher(this.config.apiUrl!);
+
     this.instances = new Map();
   }
 
   /**
-   * Open a browser window
+   * Open a browser window by name
+   */
+  async openBrowserByName(windowName: string): Promise<BrowserInstance> {
+    logger.info({ windowName }, 'Opening browser instance by name');
+
+    try {
+      // Get window ID from name
+      const windowId = await this.windowMatcher.getWindowIdByName(windowName);
+      if (!windowId) {
+        throw new Error(`Window not found with name: ${windowName}`);
+      }
+
+      logger.info({ windowName, windowId }, 'Found window ID for name');
+      return this.openBrowser(windowId);
+    } catch (error) {
+      logger.error({ windowName, error }, 'Failed to open browser by name');
+      throw error;
+    }
+  }
+
+  /**
+   * Open a browser window by ID
    */
   async openBrowser(windowId: string): Promise<BrowserInstance> {
     logger.info({ windowId }, 'Opening browser instance');
@@ -248,12 +273,19 @@ export class BitBrowserManager {
     logger.info({ instanceId: instance.id, debugUrl: instance.debugUrl }, 'Connecting Puppeteer to browser');
 
     try {
-      // Wait for browser to be ready
-      await this.apiClient.waitForBrowserReady(instance.windowId);
+      // Extract the debug URL properly
+      // debugUrl format: "http://127.0.0.1:22666"
+      let browserUrl = instance.debugUrl;
+      if (!browserUrl.startsWith('http://')) {
+        browserUrl = `http://${browserUrl}`;
+      }
 
-      // Connect via CDP
+      // Give the browser a moment to fully start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Connect via browserURL (Chrome DevTools Protocol)
       const browser = await puppeteer.connect({
-        browserWSEndpoint: instance.debugUrl.replace('http://', 'ws://') + '/',
+        browserURL: browserUrl,
         defaultViewport: null,
       });
 
@@ -570,5 +602,19 @@ export class BitBrowserManager {
     } catch (error) {
       logger.error({ error }, 'Failed to save browser instance to database');
     }
+  }
+
+  /**
+   * Get window ID by name
+   */
+  async getWindowIdByName(windowName: string): Promise<string | null> {
+    return this.windowMatcher.getWindowIdByName(windowName);
+  }
+
+  /**
+   * Get all window mappings from BitBrowser
+   */
+  async getAllWindowMappings() {
+    return this.windowMatcher.getAllWindowMappings();
   }
 }

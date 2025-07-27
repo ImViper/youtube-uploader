@@ -99,7 +99,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- View for account health summary
-CREATE OR REPLACE VIEW account_health_summary AS
+DROP VIEW IF EXISTS account_health_summary CASCADE;
+CREATE VIEW account_health_summary AS
 SELECT 
   a.id,
   a.email,
@@ -122,7 +123,8 @@ LEFT JOIN upload_history uh ON a.id = uh.account_id
 GROUP BY a.id, a.email, a.status, a.health_score, a.daily_upload_count, a.daily_upload_limit;
 
 -- View for task queue status
-CREATE OR REPLACE VIEW task_queue_status AS
+DROP VIEW IF EXISTS task_queue_status CASCADE;
+CREATE VIEW task_queue_status AS
 SELECT 
   status,
   COUNT(*) as count,

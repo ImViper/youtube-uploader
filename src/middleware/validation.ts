@@ -27,12 +27,37 @@ export function validate(config: ValidationConfig) {
 
       // Validate query parameters
       if (config.query) {
-        req.query = await config.query.parseAsync(req.query) as any;
+        const validatedQuery = await config.query.parseAsync(req.query) as Record<string, any>;
+        
+        // Store validated query in multiple ways for compatibility
+        // 1. Custom property (recommended)
+        (req as any).validatedQuery = validatedQuery;
+        
+        // 2. Merge into req object for easier access
+        (req as any).validatedData = {
+          ...(req as any).validatedData,
+          query: validatedQuery
+        };
+        
+        // 3. Try to override query if possible (for backward compatibility)
+        try {
+          // This might fail in some Express versions
+          (req as any).query = validatedQuery;
+        } catch (e) {
+          // Silently ignore if read-only
+        }
       }
 
       // Validate route parameters
       if (config.params) {
-        req.params = await config.params.parseAsync(req.params) as any;
+        const validatedParams = await config.params.parseAsync(req.params) as any;
+        req.params = validatedParams;
+        
+        // Also store in validatedData
+        (req as any).validatedData = {
+          ...(req as any).validatedData,
+          params: validatedParams
+        };
       }
 
       next();
@@ -77,6 +102,51 @@ export function validate(config: ValidationConfig) {
 /**
  * Custom validation rules for specific business logic
  */
+/**
+ * Helper function to get validated query parameters
+ * Handles different Express versions and validation middleware implementations
+ */
+export function getValidatedQuery(req: Request): Record<string, any> {
+  // Priority order:
+  // 1. Check validatedQuery property (new implementation)
+  if ((req as any).validatedQuery) {
+    return (req as any).validatedQuery;
+  }
+  
+  // 2. Check validatedData.query (alternative implementation)
+  if ((req as any).validatedData?.query) {
+    return (req as any).validatedData.query;
+  }
+  
+  // 3. Fallback to original query (unvalidated)
+  return req.query as any;
+}
+
+/**
+ * Helper function to get validated params
+ */
+export function getValidatedParams(req: Request): Record<string, any> {
+  if ((req as any).validatedData?.params) {
+    return (req as any).validatedData.params;
+  }
+  return req.params;
+}
+
+/**
+ * Helper function to get all validated data
+ */
+export function getValidatedData(req: Request): {
+  body?: any;
+  query?: Record<string, any>;
+  params?: Record<string, any>;
+} {
+  return {
+    body: req.body,
+    query: getValidatedQuery(req),
+    params: getValidatedParams(req)
+  };
+}
+
 export const customValidators = {
   /**
    * Validate YouTube video title

@@ -114,8 +114,8 @@ const results = await matrix.batchUpload(videos, {
 ### 使用API
 
 ```bash
-# 上传视频
-curl -X POST http://localhost:3000/api/upload \
+# 创建上传任务
+curl -X POST http://localhost:3000/api/v1/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "video": {
@@ -124,8 +124,14 @@ curl -X POST http://localhost:3000/api/upload \
     }
   }'
 
-# 查看状态
-curl http://localhost:3000/api/status
+# 查看任务状态
+curl http://localhost:3000/api/v1/tasks
+
+# 查看账户状态
+curl http://localhost:3000/api/v1/accounts
+
+# 查看系统指标
+curl http://localhost:3000/api/v1/dashboard/metrics
 ```
 
 ## 🏗️ 系统架构

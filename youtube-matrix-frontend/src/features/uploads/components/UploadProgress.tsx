@@ -130,6 +130,19 @@ const UploadProgress: React.FC<UploadProgressProps> = ({
       );
     }
 
+    if (upload.status === 'paused' && onResume) {
+      actions.push(
+        <Button
+          key="resume"
+          type="primary"
+          icon={<PlayCircleOutlined />}
+          onClick={() => onResume(upload.id)}
+        >
+          恢复
+        </Button>,
+      );
+    }
+
     if (upload.status === 'failed' && onRetry) {
       actions.push(
         <Button
@@ -147,7 +160,9 @@ const UploadProgress: React.FC<UploadProgressProps> = ({
   };
 
   const progressStatus =
-    upload.status === 'failed' ? 'exception' : upload.status === 'completed' ? 'success' : 'active';
+    upload.status === 'failed' ? 'exception' : 
+    upload.status === 'completed' ? 'success' : 
+    upload.status === 'paused' ? 'normal' : 'active';
 
   return (
     <Card
@@ -164,6 +179,7 @@ const UploadProgress: React.FC<UploadProgressProps> = ({
               {upload.status === 'completed' && '已完成'}
               {upload.status === 'failed' && '失败'}
               {upload.status === 'cancelled' && '已取消'}
+              {upload.status === 'paused' && '已暂停'}
             </Tag>
           </Space>
           <Space>{renderActions()}</Space>

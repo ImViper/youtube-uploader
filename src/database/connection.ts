@@ -28,17 +28,26 @@ export class DatabaseConnection {
       port: config?.port || parseInt(process.env.DB_PORT || '5987'),
       database: config?.database || process.env.DB_NAME || 'youtube_uploader',
       user: config?.user || process.env.DB_USER || 'postgres',
-      password: config?.password || process.env.DB_PASSWORD,
+      password: config?.password || process.env.DB_PASSWORD || '',
       max: config?.max || 20,
       idleTimeoutMillis: config?.idleTimeoutMillis || 30000,
       connectionTimeoutMillis: config?.connectionTimeoutMillis || 2000,
     };
+
+    logger.info('Creating database pool with config:', {
+      host: poolConfig.host,
+      port: poolConfig.port,
+      database: poolConfig.database,
+      user: poolConfig.user,
+      passwordSet: !!poolConfig.password
+    });
 
     this.pool = new Pool(poolConfig);
 
     // Handle pool errors
     this.pool.on('error', (err) => {
       logger.error('Unexpected error on idle database client', err);
+      this.isConnected = false;
     });
 
     this.pool.on('connect', () => {
@@ -170,9 +179,27 @@ let databaseInstance: DatabaseConnection | null = null;
  */
 export function getDatabase(config?: DatabaseConfig): DatabaseConnection {
   if (!databaseInstance) {
+    // Ensure environment variables are loaded
+    if (!process.env.DB_PASSWORD) {
+      logger.warn('DB_PASSWORD not set in environment variables, attempting to load .env');
+      require('dotenv').config();
+    }
+    
     databaseInstance = new DatabaseConnection(config);
   }
   return databaseInstance;
+}
+
+/**
+ * Force recreation of database connection
+ */
+export function resetDatabase(): void {
+  if (databaseInstance) {
+    databaseInstance.close().catch(err => {
+      logger.error('Error closing database during reset:', err);
+    });
+    databaseInstance = null;
+  }
 }
 
 /**

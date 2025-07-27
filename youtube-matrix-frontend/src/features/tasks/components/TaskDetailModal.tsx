@@ -25,7 +25,7 @@ import {
 } from '@ant-design/icons';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import type { Task } from '../tasksSlice';
+import type { Task } from '../tasksApi';
 
 const { Text } = Typography;
 const { TabPane } = Tabs;
@@ -62,22 +62,23 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ visible, task, onCanc
   };
 
   const getTypeText = (type: Task['type']) => {
-    const typeMap = {
+    const typeMap: Record<string, string> = {
       upload: '视频上传',
       update: '视频更新',
       comment: '添加评论',
-      delete: '删除视频',
+      analytics: '数据分析',
     };
-    return typeMap[type];
+    return typeMap[type] || type;
   };
 
   const getPriorityText = (priority: Task['priority']) => {
-    const priorityMap = {
+    const priorityMap: Record<string, string> = {
+      urgent: '紧急',
       high: '高',
-      medium: '中',
+      normal: '中',
       low: '低',
     };
-    return priorityMap[priority];
+    return priorityMap[priority] || priority;
   };
 
   const handleRetry = () => {

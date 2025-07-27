@@ -27,13 +27,13 @@ interface RestoreSettingsRequest {
 export const settingsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getSettings: builder.query<Settings, void>({
-      query: () => '/settings',
+      query: () => '/v1/settings',
       providesTags: ['Settings'],
     }),
 
     updateSettings: builder.mutation<Settings, UpdateSettingsRequest>({
       query: (body) => ({
-        url: '/settings',
+        url: '/v1/settings',
         method: 'PATCH',
         body,
       }),
@@ -42,7 +42,7 @@ export const settingsApi = baseApi.injectEndpoints({
 
     resetSettings: builder.mutation<Settings, { section?: keyof Settings }>({
       query: (params) => ({
-        url: '/settings/reset',
+        url: '/v1/settings/reset',
         method: 'POST',
         params,
       }),
@@ -51,7 +51,7 @@ export const settingsApi = baseApi.injectEndpoints({
 
     testEmailNotification: builder.mutation<ApiResponse, TestEmailRequest>({
       query: (body) => ({
-        url: '/settings/test-email',
+        url: '/v1/settings/test-email',
         method: 'POST',
         body,
       }),
@@ -59,7 +59,7 @@ export const settingsApi = baseApi.injectEndpoints({
 
     backupSettings: builder.mutation<BackupSettingsResponse, void>({
       query: () => ({
-        url: '/settings/backup',
+        url: '/v1/settings/backup',
         method: 'POST',
       }),
     }),
@@ -73,12 +73,12 @@ export const settingsApi = baseApi.injectEndpoints({
       }>,
       void
     >({
-      query: () => '/settings/backups',
+      query: () => '/v1/settings/backups',
     }),
 
     restoreSettings: builder.mutation<Settings, RestoreSettingsRequest>({
       query: (body) => ({
-        url: '/settings/restore',
+        url: '/v1/settings/restore',
         method: 'POST',
         body,
       }),
@@ -87,7 +87,7 @@ export const settingsApi = baseApi.injectEndpoints({
 
     exportSettings: builder.query<Blob, { format: 'json' | 'yaml' }>({
       query: (params) => ({
-        url: '/settings/export',
+        url: '/v1/settings/export',
         params,
         responseHandler: (response) => response.blob(),
       }),
@@ -99,7 +99,7 @@ export const settingsApi = baseApi.injectEndpoints({
         formData.append('file', file);
 
         return {
-          url: '/settings/import',
+          url: '/v1/settings/import',
           method: 'POST',
           body: formData,
         };

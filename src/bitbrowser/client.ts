@@ -189,6 +189,19 @@ export class BitBrowserClient {
   }
 
   /**
+   * Get window ID by name
+   */
+  async getWindowIdByName(windowName: string): Promise<string | null> {
+    try {
+      const window = await this.findWindowByName(windowName);
+      return window ? window.id : null;
+    } catch (error) {
+      logger.error({ windowName, error }, 'Failed to get window ID by name');
+      return null;
+    }
+  }
+
+  /**
    * Check if API is available
    */
   async isAvailable(): Promise<boolean> {

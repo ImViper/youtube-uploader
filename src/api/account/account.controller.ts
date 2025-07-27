@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AccountService } from './account.service';
+import { getValidatedQuery } from '../../middleware/validation';
 import pino from 'pino';
 
 const logger = pino({
@@ -44,23 +45,29 @@ export class AccountController {
    */
   async getAccounts(req: Request, res: Response) {
     try {
-      const result = await this.accountService.findAll(req.query as any);
+      logger.info({ query: req.query }, 'getAccounts called');
+      // Use the helper function to get validated query
+      const queryParams = getValidatedQuery(req);
+      const result = await this.accountService.findAll(queryParams as any);
+      logger.info({ resultCount: result.items?.length }, 'getAccounts result');
 
       res.json({
-        success: true,
-        data: result.items,
-        pagination: {
-          page: result.page,
-          pageSize: result.pageSize,
-          total: result.total,
-          totalPages: result.totalPages
-        }
+        items: result.items,
+        page: result.page,
+        pageSize: result.pageSize,
+        total: result.total,
+        totalPages: result.totalPages
       });
-    } catch (error) {
-      logger.error({ error }, 'Failed to get accounts');
+    } catch (error: any) {
+      logger.error({ 
+        error: error.message, 
+        stack: error.stack,
+        query: req.query 
+      }, 'Failed to get accounts');
       res.status(500).json({
         success: false,
-        error: 'Failed to get accounts'
+        error: 'Failed to get accounts',
+        message: error.message // Add more detail to response
       });
     }
   }
@@ -203,7 +210,8 @@ export class AccountController {
    */
   async exportAccounts(req: Request, res: Response) {
     try {
-      const result = await this.accountService.export(req.query as any);
+      const queryParams = getValidatedQuery(req);
+      const result = await this.accountService.export(queryParams as any);
 
       if (req.query.format === 'csv') {
         res.setHeader('Content-Type', 'text/csv');

@@ -6,7 +6,7 @@ import { loginSuccess, loginFailure, logout as logoutAction } from '@/features/a
 import { useLoginMutation, useLogoutMutation } from '@/features/auth/authApi';
 import { resetApiState } from '@/services/baseApi';
 import websocketService from '@/services/websocket';
-import { showSuccess, showError } from '@/utils/helpers';
+import { useMessage } from './useMessage';
 // import { useAuthDev } from './useAuthDev';
 
 export interface LoginCredentials {
@@ -20,6 +20,7 @@ export const useAuth = () => {
   const navigate = useNavigate();
   const user = useAppSelector(selectCurrentUser);
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const { showSuccess, showError } = useMessage();
 
   const [loginMutation, { isLoading: isLoggingIn }] = useLoginMutation();
   const [logoutMutation, { isLoading: isLoggingOut }] = useLogoutMutation();
