@@ -6,7 +6,8 @@ import {
     VideoProgress,
     ProgressEnum,
     MessageTransport,
-    GameData
+    GameData,
+    UploadOptions
 } from './types'
 import puppeteer from 'puppeteer-extra'
 import { PuppeteerNodeLaunchOptions, Browser, Page } from 'puppeteer'
@@ -52,72 +53,68 @@ let lastSelectedChannel = "";
 export const upload = async (
     credentials: Credentials,
     videos: Video[],
-    puppeteerLaunch?: PuppeteerNodeLaunchOptions,
+    options?: UploadOptions,
     messageTransport: MessageTransport = defaultMessageTransport
 ) => {
-    cookiesDirPath = path.join('.', 'yt-auth')
-    cookiesFilePath = path.join(
-        cookiesDirPath,
-        `cookies-${credentials.email.split('@')[0].replace(/\./g, '_')}-${credentials.email
-            .split('@')[1]
-            .replace(/\./g, '_')}.json`
-    )
-
-    const useCookieStore = !puppeteerLaunch?.userDataDir
-
-    if (!useCookieStore) {
-        messageTransport.log(`UserDataDir detected in options. Disabling cookie store.`)
+    // 使用提供的浏览器实例（来自 BitBrowser）
+    if (options?.browser) {
+        browser = options.browser
+        page = (await browser.pages())[0] || await browser.newPage()
+        messageTransport.log('Using provided BitBrowser instance')
+    } else {
+        // 保持向后兼容，但建议总是提供 browser 实例
+        messageTransport.warn('No browser instance provided. This is deprecated.')
+        // 可以选择：1) 抛出错误 2) 尝试创建新浏览器（不推荐）
+        throw new Error('Browser instance is required. The browser should be obtained through BitBrowserManager in the Worker.')
     }
-
-    messageTransport.debug("Launching browser...");
-    await launchBrowser(puppeteerLaunch, useCookieStore)
-    messageTransport.debug("Browser successfully launched");
-
+    
     try {
-        await loadAccount(credentials, messageTransport, useCookieStore)
-        messageTransport.debug("Account loaded");
-
-        const uploadedYTLink: string[] = [];
-        lastSelectedChannel = "";
-
-        for (const video of videos) {
-            try {
-                messageTransport.log(`Uploading video ${video.title} [${video.path}]`);
-                const link = await uploadVideo(video, messageTransport)
-                messageTransport.log(`Video ${video.title} [${video.path}] successfully uploaded`);
-
-                const { onSuccess } = video
-                if (typeof onSuccess === 'function') {
-                    try {
-                        onSuccess(link, video)
-                    }
-                    catch (err) {
-                        messageTransport.warn(`Error calling onSuccess function. Will proceed with other videos. Error: ${err}`);
-                    }                    
-                }
-
-                uploadedYTLink.push(link)
-            }
-            catch (err) {
-                messageTransport.error(`Error uploading video ${video.title} [${video.path}]: ${err}`);
-                throw err;
-            }
+        // 检测登录状态
+        const isLoggedIn = await checkIfLoggedIn(page, messageTransport)
+        messageTransport.log(`Login status: ${isLoggedIn ? 'Logged in' : 'Not logged in'}`)
+        
+        // 条件登录
+        if (!isLoggedIn && !options?.skipLogin) {
+            messageTransport.log('Attempting to login...')
             
+            // 设置 cookies 路径（用于登录）
+            cookiesDirPath = path.join('.', 'yt-auth')
+            cookiesFilePath = path.join(
+                cookiesDirPath,
+                `cookies-${credentials.email.split('@')[0].replace(/\./g, '_')}-${credentials.email
+                    .split('@')[1]
+                    .replace(/\./g, '_')}.json`
+            )
+            
+            const useCookieStore = !options?.userDataDir
+            await loadAccount(credentials, messageTransport, useCookieStore)
         }
-
-        await browser.close()
-
-        return uploadedYTLink
+        
+        // 执行统一的上传流程
+        const uploadedLinks = await performUpload(videos, page, messageTransport)
+        
+        // 触发进度回调
+        if (options?.onProgress) {
+            options.onProgress({
+                progress: 100,
+                stage: ProgressEnum.Done
+            })
+        }
+        
+        return uploadedLinks
+        
     } catch (err) {
-        messageTransport.error(err);
-        if (browser) await browser.close()
-
+        messageTransport.error(err)
         throw err
     }
+    // 注意：不关闭浏览器，由 Worker 管理
 }
 
-// `videoJSON = {}`, avoid `videoJSON = undefined` throw error.
-async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport) {
+/**
+ * @deprecated 使用新的 performUpload 函数代替
+ * 保留用于向后兼容
+ */
+async function uploadVideoLegacy(videoJSON: Video, messageTransport: MessageTransport) {
     const pathToFile = videoJSON.path
     if (!pathToFile) {
         throw new Error("function `upload`'s second param `videos`'s item `video` must include `path` property.")
@@ -1472,4 +1469,421 @@ async function selectGame(page: Page, gameTitle: string, messageTransport: Messa
         return false;
     }
     return true;
+}
+
+/**
+ * 执行统一的上传流程
+ */
+async function performUpload(
+    videos: Video[], 
+    page: Page, 
+    messageTransport: MessageTransport
+): Promise<string[]> {
+    const uploadedLinks: string[] = []
+    
+    for (const video of videos) {
+        try {
+            messageTransport.log(`Starting upload for: ${video.title}`)
+            
+            // 导航到上传页面
+            await page.goto(uploadURL, { waitUntil: 'networkidle2' })
+            await page.waitForTimeout(2000)
+            
+            // 处理可能的弹窗
+            await handlePotentialPopups(page, messageTransport)
+            
+            // 查找并上传文件
+            const fileInput = await findFileInput(page, messageTransport)
+            await fileInput.uploadFile(video.path)
+            messageTransport.log('File selected for upload')
+            
+            // 等待上传开始
+            await page.waitForTimeout(3000)
+            
+            // 填写视频信息
+            await fillVideoDetails(page, video, messageTransport)
+            
+            // 设置视频属性
+            await setVideoProperties(page, video, messageTransport)
+            
+            // 完成上传并获取链接
+            const videoLink = await completeUpload(page, messageTransport)
+            
+            uploadedLinks.push(videoLink)
+            messageTransport.log(`Upload completed: ${videoLink}`)
+            
+            // 触发成功回调
+            if (video.onSuccess) {
+                video.onSuccess(videoLink, video)
+            }
+            
+        } catch (error) {
+            messageTransport.error(`Upload failed for ${video.title}: ${error}`)
+            throw error
+        }
+    }
+    
+    return uploadedLinks
+}
+
+/**
+ * 处理可能出现的弹窗
+ */
+async function handlePotentialPopups(page: Page, messageTransport: MessageTransport): Promise<void> {
+    messageTransport.debug('Checking for popups...')
+    
+    // YouTube 政策提醒弹窗
+    const policyCloseSelectors = [
+        'tp-yt-paper-dialog button:has-text("Close")',
+        'button[aria-label="Close"]',
+        '.ytcp-uploads-still-processing-dialog button',
+        'tp-yt-paper-button:contains("Close")'
+    ]
+    
+    for (const selector of policyCloseSelectors) {
+        try {
+            const button = await page.$(selector)
+            if (button) {
+                try {
+                    // 检查元素是否可见
+                    const isVisible = await page.evaluate(el => {
+                        if (!el) return false
+                        const style = window.getComputedStyle(el)
+                        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'
+                    }, button)
+                    
+                    if (isVisible) {
+                        await button.click()
+                        await page.waitForTimeout(1000)
+                        messageTransport.log('Closed popup dialog')
+                        break
+                    }
+                } catch (e) {
+                    // 元素可能已经消失
+                }
+            }
+        } catch (e) {
+            // 继续尝试其他选择器
+        }
+    }
+    
+    // 使用页面脚本作为备选方案
+    await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button, tp-yt-paper-button'))
+        const closeButton = buttons.find(btn => 
+            btn.textContent?.trim().toLowerCase() === 'close'
+        )
+        if (closeButton) {
+            (closeButton as HTMLElement).click()
+        }
+    })
+}
+
+/**
+ * 查找文件输入元素
+ */
+async function findFileInput(page: Page, messageTransport: MessageTransport): Promise<any> {
+    // 尝试多种选择器
+    const fileInputSelectors = [
+        'input[type="file"]',
+        'input[name="Filedata"]',
+        '#content > input[type="file"]',
+        'ytcp-uploads-file-picker input[type="file"]'
+    ]
+    
+    for (const selector of fileInputSelectors) {
+        const fileInput = await page.$(selector)
+        if (fileInput) {
+            messageTransport.debug(`Found file input: ${selector}`)
+            return fileInput
+        }
+    }
+    
+    // 如果找不到，尝试点击上传按钮触发
+    const uploadButtonSelectors = [
+        '#select-files-button',
+        'button[id*="select-files"]',
+        '#upload-prompt-box',
+        'ytcp-uploads-dialog'
+    ]
+    
+    for (const selector of uploadButtonSelectors) {
+        try {
+            await page.click(selector)
+            await page.waitForTimeout(1000)
+            messageTransport.debug(`Clicked upload button: ${selector}`)
+            
+            // 再次查找文件输入
+            for (const inputSelector of fileInputSelectors) {
+                const fileInput = await page.$(inputSelector)
+                if (fileInput) {
+                    return fileInput
+                }
+            }
+        } catch (e) {
+            // 继续尝试
+        }
+    }
+    
+    throw new Error('Unable to find file input element')
+}
+
+/**
+ * 填写视频详细信息
+ */
+async function fillVideoDetails(page: Page, video: Video, messageTransport: MessageTransport): Promise<void> {
+    messageTransport.debug('Filling video details...')
+    
+    // 等待标题输入框
+    await page.waitForSelector('#textbox', { timeout: 10000 })
+    
+    // 清空并输入标题
+    await page.click('#textbox')
+    await page.keyboard.down('Control')
+    await page.keyboard.press('A')
+    await page.keyboard.up('Control')
+    await page.keyboard.press('Backspace')
+    
+    // 处理标题长度限制（最大100字符）
+    const title = video.title.substring(0, 100)
+    await page.type('#textbox', title)
+    messageTransport.debug(`Title entered: ${title}`)
+    
+    // 输入描述
+    if (video.description) {
+        const descriptionBox = await page.$('#description-container #textbox')
+        if (descriptionBox) {
+            await descriptionBox.click()
+            await page.keyboard.down('Control')
+            await page.keyboard.press('A')
+            await page.keyboard.up('Control')
+            await page.keyboard.press('Backspace')
+            
+            // 处理描述长度限制（最大5000字符）
+            const description = video.description.substring(0, 5000)
+            await page.type('#description-container #textbox', description)
+            messageTransport.debug('Description entered')
+        }
+    }
+    
+    // 处理标签
+    if (video.tags && video.tags.length > 0) {
+        // TODO: 实现标签输入逻辑
+        messageTransport.debug('Tags input not implemented yet')
+    }
+}
+
+/**
+ * 设置视频属性（儿童内容、隐私等）
+ */
+async function setVideoProperties(page: Page, video: Video, messageTransport: MessageTransport): Promise<void> {
+    messageTransport.debug('Setting video properties...')
+    
+    // 设置儿童内容选项
+    if (video.isNotForKid !== false) {
+        const notForKidsSelectors = [
+            'tp-yt-paper-radio-button[name="NOT_MADE_FOR_KIDS"]',
+            '#radioOption1',
+            'tp-yt-paper-radio-button[value="NOT_MADE_FOR_KIDS"]',
+            '#audience-radio-group tp-yt-paper-radio-button:nth-child(2)'
+        ]
+        
+        let clicked = false
+        for (const selector of notForKidsSelectors) {
+            try {
+                await page.waitForSelector(selector, { timeout: 5000 })
+                await page.click(selector)
+                messageTransport.debug(`Set NOT_MADE_FOR_KIDS: ${selector}`)
+                clicked = true
+                break
+            } catch (e) {
+                // 继续尝试下一个选择器
+            }
+        }
+        
+        if (!clicked) {
+            // 使用页面脚本
+            await page.evaluate(() => {
+                const radioButtons = document.querySelectorAll('tp-yt-paper-radio-button')
+                radioButtons.forEach(button => {
+                    if (button.getAttribute('name') === 'NOT_MADE_FOR_KIDS') {
+                        (button as HTMLElement).click()
+                    }
+                })
+            })
+        }
+    }
+    
+    // 点击下一步按钮（多次）
+    const nextButtonSelectors = [
+        '#next-button',
+        'ytcp-button[id="next-button"]',
+        '#stepper-next-button'
+    ]
+    
+    for (let i = 0; i < 3; i++) {
+        let clicked = false
+        for (const selector of nextButtonSelectors) {
+            try {
+                await page.waitForSelector(selector, { timeout: 5000 })
+                await page.click(selector)
+                messageTransport.debug(`Clicked next button (${i + 1}/3)`)
+                clicked = true
+                await page.waitForTimeout(2000)
+                break
+            } catch (e) {
+                // 继续尝试下一个选择器
+            }
+        }
+        
+        if (!clicked) {
+            // 可能已经到了最后一步
+            break
+        }
+    }
+    
+    // 设置隐私级别
+    if (video.publishType) {
+        const privacySelectors = [
+            `tp-yt-paper-radio-button[name="${video.publishType}"]`,
+            `#privacy-radios tp-yt-paper-radio-button[name="${video.publishType}"]`,
+            `ytcp-privacy-radio-button[name="${video.publishType}"]`
+        ]
+        
+        for (const selector of privacySelectors) {
+            try {
+                await page.waitForSelector(selector, { timeout: 5000 })
+                await page.click(selector)
+                messageTransport.debug(`Set privacy: ${video.publishType}`)
+                break
+            } catch (e) {
+                // 继续尝试
+            }
+        }
+    }
+}
+
+/**
+ * 完成上传并获取视频链接
+ */
+async function completeUpload(page: Page, messageTransport: MessageTransport): Promise<string> {
+    messageTransport.debug('Waiting for upload to complete...')
+    
+    // 等待"完成"按钮出现
+    const doneButtonSelectors = [
+        '#done-button',
+        'ytcp-button[id="done-button"]',
+        '.done-button'
+    ]
+    
+    let doneButton = null
+    for (const selector of doneButtonSelectors) {
+        try {
+            await page.waitForSelector(selector, { 
+                visible: true, 
+                timeout: 10000 
+            })
+            doneButton = await page.$(selector)
+            if (doneButton) {
+                messageTransport.debug(`Found done button: ${selector}`)
+                break
+            }
+        } catch (e) {
+            // 继续尝试
+        }
+    }
+    
+    if (!doneButton) {
+        // 等待更长时间
+        messageTransport.log('Waiting for upload to complete (this may take several minutes)...')
+        await page.waitForSelector('#done-button', { 
+            visible: true, 
+            timeout: 300000 // 5分钟
+        })
+        doneButton = await page.$('#done-button')
+    }
+    
+    // 获取视频链接
+    let videoLink = ''
+    const linkSelectors = [
+        '.video-url-fadeable a',
+        'a.ytcp-video-info',
+        'ytcp-video-info a',
+        'input.style-scope.ytcp-social-suggestions-textbox'
+    ]
+    
+    for (const selector of linkSelectors) {
+        try {
+            const linkElement = await page.$(selector)
+            if (linkElement) {
+                videoLink = await page.evaluate(el => (el as HTMLAnchorElement).href || (el as HTMLInputElement).value, linkElement)
+                if (videoLink) {
+                    messageTransport.debug(`Got video link: ${videoLink}`)
+                    break
+                }
+            }
+        } catch (e) {
+            // 继续尝试
+        }
+    }
+    
+    // 点击完成按钮
+    if (doneButton) {
+        await doneButton.click()
+        messageTransport.debug('Clicked done button')
+    }
+    
+    return videoLink || 'upload-completed'
+}
+
+/**
+ * 检查浏览器是否已登录 YouTube
+ */
+async function checkIfLoggedIn(page: Page, messageTransport: MessageTransport): Promise<boolean> {
+    try {
+        messageTransport.debug('Checking if logged in to YouTube...')
+        
+        // 确保在 YouTube 页面
+        const currentUrl = page.url()
+        if (!currentUrl.includes('youtube.com')) {
+            messageTransport.debug('Not on YouTube, navigating to homepage...')
+            await page.goto(homePageURL, { waitUntil: 'networkidle2' })
+            await page.waitForTimeout(2000)
+        }
+        
+        // 方法1：检查用户头像
+        messageTransport.debug('Checking for user avatar...')
+        const avatarButton = await page.$('#avatar-btn')
+        if (avatarButton) {
+            messageTransport.debug('User avatar found - logged in')
+            return true
+        }
+        
+        // 方法2：检查登录按钮（存在说明未登录）
+        messageTransport.debug('Checking for sign in button...')
+        const signInButton = await page.$('tp-yt-paper-button[aria-label*="Sign in"]')
+        if (signInButton) {
+            messageTransport.debug('Sign in button found - not logged in')
+            return false
+        }
+        
+        // 方法3：检查特定 cookie
+        messageTransport.debug('Checking cookies...')
+        const cookies = await page.cookies()
+        const hasAuthCookie = cookies.some(cookie => 
+            cookie.name === 'SAPISID' || cookie.name === 'SID'
+        )
+        
+        if (hasAuthCookie) {
+            messageTransport.debug('Auth cookies found - logged in')
+            return true
+        }
+        
+        messageTransport.debug('No login indicators found - assuming not logged in')
+        return false
+    } catch (error) {
+        messageTransport.error(`Error checking login status: ${error}`)
+        // 默认认为未登录，触发登录流程
+        return false
+    }
 }

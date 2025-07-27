@@ -185,10 +185,10 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
       });
 
       // Wait for upload or timeout
-      const uploadResults = await Promise.race([uploadPromise, timeoutPromise]) as any;
-      const uploadResult = uploadResults?.[0];
+      const uploadResults = await Promise.race([uploadPromise, timeoutPromise]) as string[];
+      const videoLink = uploadResults?.[0];
 
-      if (!uploadResult || !uploadResult.link) {
+      if (!videoLink) {
         throw new Error('Upload failed - no video link returned');
       }
 
@@ -201,7 +201,7 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
              upload_duration = $2,
              completed_at = CURRENT_TIMESTAMP
          WHERE id = $3`,
-        [uploadResult.link, uploadDuration, historyId]
+        [videoLink, uploadDuration, historyId]
       );
 
       // Update account health and stats
@@ -210,13 +210,13 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
       logger.info({ 
         jobId: job.id,
         taskId,
-        videoId: uploadResult.link,
+        videoId: videoLink,
         duration: uploadDuration 
       }, 'Upload completed successfully');
 
       return {
         success: true,
-        videoId: uploadResult.link,
+        videoId: videoLink,
         uploadDuration,
         accountId,
         windowName

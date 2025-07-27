@@ -154,3 +154,10 @@ Thumbs.db
 # Diagnostic reports
 *-diagnostic-report.txt
 *-report.txt
+
+# Test screenshots
+*.png
+screenshot-*.png
+popup-error-*.png
+test-screenshots/
+screenshots/

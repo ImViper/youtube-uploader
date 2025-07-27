@@ -1,3 +1,5 @@
+import type { PuppeteerNodeLaunchOptions, Browser } from 'puppeteer'
+
 export interface Video {
     path: string
     title: string
@@ -80,4 +82,11 @@ export interface GameData {
     title: string
     year?: string
     mid?: string
+}
+
+export interface UploadOptions extends PuppeteerNodeLaunchOptions {
+    browser?: Browser      // 可选：已连接的浏览器实例（必须是 BitBrowser）
+    skipLogin?: boolean    // 是否跳过登录检查（默认 false）
+    onProgress?: (progress: VideoProgress) => void
+    onLog?: (message: string) => void
 }
