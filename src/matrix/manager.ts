@@ -1,12 +1,11 @@
 import { Video, Credentials, MessageTransport } from '../types';
 import { ProgressHandler } from '../types/missing-types';
 import { BitBrowserManager } from '../bitbrowser/manager';
-import { BrowserPool } from '../bitbrowser/pool';
 import { AccountManager } from '../accounts/manager';
 import { AccountSelector, HealthScoreStrategy } from '../accounts/selector';
 import { AccountMonitor } from '../accounts/monitor';
 import { QueueManager, UploadTask } from '../queue/manager';
-import { UploadWorker } from '../workers/upload-worker';
+import { UploadWorkerV2 } from '../workers/upload-worker-v2';
 import { RetryHandler } from '../queue/retry-handler';
 import { Queue } from 'bullmq';
 import { getDatabase } from '../database/connection';
@@ -21,10 +20,6 @@ const logger = pino({
 });
 
 export interface MatrixManagerConfig {
-  browserPool?: {
-    minInstances?: number;
-    maxInstances?: number;
-  };
   queue?: {
     concurrency?: number;
     rateLimit?: {
@@ -63,12 +58,11 @@ export interface MatrixUploadResult {
 export class MatrixManager {
   private config: MatrixManagerConfig;
   private bitBrowserManager!: BitBrowserManager;
-  private browserPool!: BrowserPool;
   private accountManager!: AccountManager;
   private accountSelector!: AccountSelector;
   private accountMonitor!: AccountMonitor;
   private queueManager!: QueueManager;
-  private uploadWorker!: UploadWorker;
+  private uploadWorker!: UploadWorkerV2;
   private retryHandler!: RetryHandler;
   private deadLetterQueue!: Queue<UploadTask>;
   private isInitialized = false;
@@ -77,11 +71,6 @@ export class MatrixManager {
 
   constructor(config: MatrixManagerConfig = {}) {
     this.config = {
-      browserPool: {
-        minInstances: 0,  // 不自动创建浏览器实例
-        maxInstances: 10,
-        ...config.browserPool
-      },
       queue: {
         concurrency: 5,
         ...config.queue
@@ -190,11 +179,11 @@ export class MatrixManager {
         async (job) => {
           logger.info({ jobId: job.id, taskId: job.data.id }, 'Basic worker received job - initializing full worker');
           
-          // Update task status to processing in database
+          // Update task status to active in database
           try {
             await this.db.query(
               `UPDATE upload_tasks 
-               SET status = 'processing', started_at = NOW() 
+               SET status = 'active', started_at = NOW() 
                WHERE id = $1`,
               [job.data.id]
             );
@@ -248,28 +237,20 @@ export class MatrixManager {
         apiUrl: this.config.bitBrowserUrl!
       });
 
-      // Initialize browser pool
-      this.browserPool = new BrowserPool(this.bitBrowserManager, {
-        minInstances: this.config.browserPool!.minInstances,
-        maxInstances: this.config.browserPool!.maxInstances
-      });
-      await this.browserPool.initialize();
+      // Browser pool removed - using direct BitBrowser window management
 
-      // Initialize upload worker with browser pool
-      this.uploadWorker = new UploadWorker('youtube-uploads', {
-        concurrency: this.config.queue!.concurrency,
-        browserPool: this.browserPool,
-        accountSelector: this.accountSelector,
-        accountManager: this.accountManager
+      // Initialize upload worker V2 with BitBrowserManager
+      this.uploadWorker = new UploadWorkerV2({
+        accountManager: this.accountManager,
+        bitBrowserManager: this.bitBrowserManager,
+        maxUploadTime: 1800000, // 30 minutes
+        maxRetries: 3
       });
 
       // Start the worker
       await this.uploadWorker.start();
 
-      // Setup browser pool event listeners
-      this.browserPool.on('instanceError', (instance) => {
-        logger.error({ instance }, 'Browser instance error');
-      });
+      // Browser pool event listeners removed
 
       this.isBrowserInitialized = true;
       logger.info('BitBrowser components initialized successfully');
@@ -516,7 +497,7 @@ export class MatrixManager {
       });
     }
 
-    // Browser pool events will be set up when browser is initialized
+    // Browser events handled by BitBrowserManager
   }
 
   /**
@@ -528,18 +509,14 @@ export class MatrixManager {
       this.accountManager.getAccountStats()
     ]);
 
-    // Get browser pool stats only if initialized
-    let poolStats = null;
-    if (this.isBrowserInitialized && this.browserPool) {
-      poolStats = await this.browserPool.getStats();
-    }
+    // Browser pool stats removed - statistics handled by BitBrowserManager
 
     const systemMetrics = this.accountMonitor ? 
       await this.accountMonitor.getSystemMetrics() : null;
 
     return {
       queue: queueStats,
-      browserPool: poolStats,
+      browserStatus: this.isBrowserInitialized ? 'initialized' : 'not-initialized',
       accounts: accountStats,
       metrics: systemMetrics,
       initialized: this.isInitialized,
@@ -571,11 +548,10 @@ export class MatrixManager {
   async resume(): Promise<void> {
     logger.info('Resuming matrix operations');
     
-    const promises = [this.queueManager.resume()];
+    const promises: Promise<void>[] = [this.queueManager.resume()];
     
-    if (this.isBrowserInitialized && this.uploadWorker) {
-      promises.push(this.uploadWorker.resume());
-    }
+    // UploadWorkerV2 doesn't have a resume method
+    // The queue manager handles the resumption of processing
     
     await Promise.all(promises);
 
@@ -602,15 +578,17 @@ export class MatrixManager {
 
       // Shutdown worker if initialized
       if (this.isBrowserInitialized && this.uploadWorker) {
-        await this.uploadWorker.shutdown();
+        // UploadWorkerV2 doesn't have shutdown method, use stop instead
+        await this.uploadWorker.stop();
       }
 
       // Shutdown queue
       await this.queueManager.shutdown();
 
-      // Shutdown browser pool if initialized
-      if (this.isBrowserInitialized && this.browserPool) {
-        await this.browserPool.shutdown();
+      // Shutdown browser manager if initialized
+      if (this.isBrowserInitialized && this.bitBrowserManager) {
+        // BitBrowserManager handles window management directly
+        logger.info('BitBrowser windows remain open for reuse');
       }
 
       this.isInitialized = false;

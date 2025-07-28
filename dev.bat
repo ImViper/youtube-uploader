@@ -21,6 +21,8 @@ if "%1"=="--help" goto :help
 if "%1"=="--stop" goto :stop
 if "%1"=="--status" goto :status
 if "%1"=="--logs" goto :logs
+if "%1"=="--test" goto :test_mode
+if "%1"=="--restart" goto :restart
 
 REM 检查 Docker
 docker version >nul 2>&1
@@ -37,6 +39,7 @@ echo Cleaning up ports...
 REM 先尝试关闭已知的进程
 taskkill /FI "WindowTitle eq YouTube Backend*" /T /F >nul 2>&1
 taskkill /FI "WindowTitle eq YouTube Frontend*" /T /F >nul 2>&1
+taskkill /FI "WindowTitle eq YouTube Test Backend*" /T /F >nul 2>&1
 
 REM 清理后端端口 5989
 echo   Checking port %BACKEND_PORT%...
@@ -124,9 +127,10 @@ echo Backend: http://localhost:%BACKEND_PORT%
 echo Frontend: http://localhost:%FRONTEND_PORT%
 echo pgAdmin: http://localhost:8082
 echo.
-echo Commands: dev --stop, dev --status, dev --logs
+echo Commands: dev --stop, dev --status, dev --logs, dev --test, dev --restart
 echo Press any key to stop all services...
 pause >nul
+goto :stop
 
 :stop
 echo.
@@ -155,10 +159,65 @@ if exist server.log type server.log
 pause
 goto :end
 
+:test_mode
+echo.
+echo %YELLOW%Starting in TEST MODE%RESET%
+echo.
+
+REM 清理测试服务器端口
+echo Cleaning up test server port...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%BACKEND_PORT%') do (
+    set "pid=%%a"
+    if not "!pid!"=="" (
+        echo   Killing process on port %BACKEND_PORT% (PID: !pid!)
+        taskkill /F /PID !pid! >nul 2>&1
+        timeout /t 1 /nobreak >nul
+    )
+)
+
+REM 等待端口释放
+timeout /t 2 /nobreak >nul
+
+REM 构建manual-tests
+echo Building manual-tests...
+cd manual-tests
+call node build.js
+if errorlevel 1 (
+    echo %RED%Build failed!%RESET%
+    cd ..
+    pause
+    exit /b 1
+)
+
+REM 启动测试服务器
+echo Starting test server...
+start "YouTube Test Backend" /MIN cmd /k "node start-server-local.js"
+cd ..
+
+REM 等待服务启动
+timeout /t 3 /nobreak >nul
+
+echo.
+echo %GREEN%✓ Test server started!%RESET%
+echo.
+echo Test Server: http://localhost:%BACKEND_PORT%
+echo.
+echo Run tests in manual-tests directory
+echo Press any key to stop test server...
+pause >nul
+goto :stop
+
+:restart
+echo.
+echo %YELLOW%Restarting all services...%RESET%
+goto :stop
+
 :help
 echo.
 echo Usage: dev [options]
-echo   (no args)  Start all services
+echo   (no args)  Start all services (normal mode)
+echo   --test     Start in test mode (manual-tests)
+echo   --restart  Restart all services
 echo   --stop     Stop all services  
 echo   --status   Check service status
 echo   --logs     View recent logs

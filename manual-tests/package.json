@@ -1,0 +1,26 @@
+{
+  "name": "youtube-uploader-manual-tests",
+  "version": "1.0.0",
+  "description": "Manual and unit tests for YouTube Uploader",
+  "scripts": {
+    "test:unit": "jest --config jest.config.js",
+    "test:unit:watch": "jest --config jest.config.js --watch",
+    "test:unit:coverage": "jest --config jest.config.js --coverage",
+    "test:auth": "jest --config jest.config.js unit-tests/api/auth.test.ts",
+    "test:account": "jest --config jest.config.js unit-tests/api/account",
+    "test:task": "jest --config jest.config.js unit-tests/api/task",
+    "test:matrix": "jest --config jest.config.js unit-tests/api/matrix"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.20",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "uuid": "^11.1.0"
+  }
+}

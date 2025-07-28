@@ -57,7 +57,9 @@
     "copy:sql": "node scripts/copy-sql.js",
     "test:coverage": "jest --coverage",
     "test:task": "jest src/api/task/__tests__",
-    "test:task:coverage": "jest src/api/task/__tests__ --coverage"
+    "test:task:coverage": "jest src/api/task/__tests__ --coverage",
+    "worker": "npm run build && node dist/start-worker.js",
+    "worker:dev": "npm run build && LOG_LEVEL=debug node dist/start-worker.js"
   },
   "keywords": [
     "youtube uploader",

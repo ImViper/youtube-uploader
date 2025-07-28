@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   email VARCHAR(255) UNIQUE NOT NULL,
   encrypted_credentials TEXT NOT NULL,
   browser_profile_id VARCHAR(255) UNIQUE NOT NULL,
+  bitbrowser_window_name VARCHAR(255),
   status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'limited', 'suspended', 'error')),
   daily_upload_count INTEGER DEFAULT 0,
   daily_upload_limit INTEGER DEFAULT 2,

@@ -58,7 +58,7 @@ export class AccountService {
         {
           proxy: accountData.proxy,
           dailyUploadLimit: accountData.dailyUploadLimit,
-          browserWindowName: accountData.browserWindowName,
+          bitbrowser_window_name: accountData.browserWindowName || accountData.bitbrowser_window_name,
           ...accountData.metadata
         }
       );
@@ -166,7 +166,32 @@ export class AccountService {
    */
   async update(id: string, updates: any) {
     try {
-      await this.accountManager.updateAccount(id, updates);
+      // Convert frontend field names to backend field names
+      const mappedUpdates = { ...updates };
+      
+      // Map browserWindowName to bitbrowser_window_name
+      if (updates.browserWindowName !== undefined) {
+        mappedUpdates.bitbrowser_window_name = updates.browserWindowName;
+        delete mappedUpdates.browserWindowName;
+      }
+      
+      // Handle notes - if it's at root level, move it to metadata
+      if (updates.notes !== undefined) {
+        if (!mappedUpdates.metadata) {
+          mappedUpdates.metadata = {};
+        }
+        mappedUpdates.metadata.notes = updates.notes;
+        delete mappedUpdates.notes;
+      }
+      
+      // Log for debugging
+      logger.info({ 
+        id, 
+        originalUpdates: updates, 
+        mappedUpdates 
+      }, 'Account update request');
+      
+      await this.accountManager.updateAccount(id, mappedUpdates);
       const account = await this.accountManager.getAccount(id);
       return account ? this.sanitizeAccount(account) : undefined;
     } catch (error) {
@@ -406,10 +431,30 @@ export class AccountService {
   }
 
   /**
+   * Calculate success rate based on account upload history
+   */
+  private calculateSuccessRate(account: any): number {
+    // If we have success/failure metrics in metadata, use them
+    if (account.metadata?.uploadStats) {
+      const stats = account.metadata.uploadStats;
+      const total = (stats.success || 0) + (stats.failed || 0);
+      if (total > 0) {
+        return Math.round((stats.success / total) * 100);
+      }
+    }
+    
+    // Default to health score as a proxy for success rate
+    return account.healthScore || 100;
+  }
+
+  /**
    * Sanitize account data to remove sensitive information
    */
   private sanitizeAccount(account: any) {
     try {
+      // Calculate success rate based on historical data if available
+      const successRate = this.calculateSuccessRate(account);
+      
       const sanitized = {
         id: account.id,
         username: account.email ? account.email.split('@')[0] : 'unknown',
@@ -418,14 +463,19 @@ export class AccountService {
         healthScore: account.healthScore || 100,
         dailyUploadCount: account.dailyUploadCount || 0,
         dailyUploadLimit: account.dailyUploadLimit || 10,
+        uploadsCount: account.dailyUploadCount || 0, // Map to frontend expected field
+        successRate: successRate,
         lastActive: account.lastUploadTime || null,
         createdAt: account.createdAt || new Date().toISOString(),
-        browserWindowName: account.bitbrowserWindowName || null,
+        browserWindowName: account.bitbrowser_window_name || null,
+        browserWindowId: account.browser_profile_id || null, // Add browser window ID
+        isWindowLoggedIn: account.metadata?.isWindowLoggedIn || false, // Add login status
         proxy: undefined as any,
         metadata: {
           notes: account.metadata?.notes || '',
           tags: account.metadata?.tags || []
-        }
+        },
+        notes: account.metadata?.notes || '' // Also expose notes at root level for frontend
       };
       
       // Safely add proxy if it exists (could be in root or metadata)

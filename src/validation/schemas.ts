@@ -41,6 +41,7 @@ export const updateMatrixSchema = z.object({
 export const createAccountSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
+  bitbrowser_window_name: z.string().optional(),
   proxy: z.object({
     host: z.string(),
     port: z.number().int().positive().max(65535),
@@ -58,6 +59,8 @@ export const createAccountSchema = z.object({
 export const updateAccountSchema = z.object({
   email: z.string().email().optional(),
   password: z.string().min(6).optional(),
+  bitbrowser_window_name: z.string().optional(),
+  browserWindowName: z.string().optional(), // Support camelCase from frontend
   proxy: z.object({
     host: z.string(),
     port: z.number().int().positive().max(65535),
@@ -69,6 +72,7 @@ export const updateAccountSchema = z.object({
     tags: z.array(z.string()).optional(),
     customFields: z.record(z.string(), z.any()).optional()
   }).optional(),
+  notes: z.string().optional(), // Support root-level notes from frontend
   dailyUploadLimit: z.number().int().positive().optional(),
   status: z.enum(['active', 'suspended', 'disabled']).optional(),
   healthScore: z.number().min(0).max(100).optional()

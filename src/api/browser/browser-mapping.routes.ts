@@ -27,16 +27,16 @@ router.get('/mappings', async (req: Request, res: Response) => {
     // Get all accounts with window mappings
     const accounts = await accountManager.listAccountsWithWindowMapping();
     
-    // Get browser profiles from database
-    const profilesResult = await db.query(
-      'SELECT * FROM bitbrowser_profiles WHERE is_active = true ORDER BY window_name'
+    // Get browser instances from database
+    const instancesResult = await db.query(
+      'SELECT * FROM browser_instances WHERE is_active = true ORDER BY window_id'
     );
-    const profiles = profilesResult.rows;
+    const instances = instancesResult.rows;
 
     // Build comprehensive mapping list
     const mappings = windows.map(window => {
-      const account = accounts.find(a => a.bitbrowserWindowId === window.id);
-      const profile = profiles.find(p => p.window_id === window.id);
+      const account = accounts.find(a => a.bitbrowser_window_name === window.windowName);
+      const instance = instances.find(i => i.window_id === window.id);
       const config = browserProfiles.find(bp => bp.windowName === window.windowName);
 
       return {
@@ -48,12 +48,12 @@ router.get('/mappings', async (req: Request, res: Response) => {
           email: account.email,
           status: account.status,
           healthScore: account.healthScore,
-          isLoggedIn: account.isWindowLoggedIn
+          windowName: account.bitbrowser_window_name
         } : null,
-        profile: profile ? {
-          isLoggedIn: profile.is_logged_in,
-          lastHealthCheck: profile.last_health_check,
-          profileData: profile.profile_data
+        instance: instance ? {
+          isLoggedIn: instance.is_logged_in,
+          lastHealthCheck: instance.last_health_check,
+          profileData: instance.profile_data
         } : null,
         configured: !!config
       };
@@ -92,9 +92,7 @@ router.post('/map', async (req: Request, res: Response) => {
     // Update the mapping
     await accountManager.updateAccountBrowserMapping(
       accountEmail,
-      windowId,
-      windowName,
-      false // Will be updated after login check
+      windowName
     );
 
     res.json({
@@ -150,9 +148,11 @@ router.post('/check-login', async (req: Request, res: Response) => {
     const isLoggedIn = await bitBrowserManager.checkYouTubeLogin(windowId);
 
     // Update account login status
-    const account = await accountManager.getAccountByWindowId(windowId);
+    const account = await accountManager.getAccountByWindowName(windowId);
     if (account) {
-      await accountManager.updateWindowLoginStatus(account.id, isLoggedIn);
+      // Note: updateWindowLoginStatus method has been removed
+      // Login status is now tracked in browser_instances table
+      logger.info({ accountId: account.id, isLoggedIn }, 'Login status checked');
     }
 
     res.json({
@@ -185,13 +185,13 @@ router.get('/unmapped-windows', async (req: Request, res: Response) => {
     
     // Get all accounts
     const accounts = await accountManager.listAccounts();
-    const mappedWindowIds = accounts
-      .map(a => a.bitbrowserWindowId)
-      .filter(id => id);
+    const mappedWindowNames = accounts
+      .map(a => a.bitbrowser_window_name)
+      .filter(name => name);
 
     // Filter unmapped windows
     const unmappedWindows = windows.filter(
-      window => !mappedWindowIds.includes(window.id)
+      window => !mappedWindowNames.includes((window as any).windowName || window.id)
     );
 
     res.json({
@@ -256,26 +256,24 @@ router.post('/sync-mappings', async (req: Request, res: Response) => {
         // Update mapping
         await accountManager.updateAccountBrowserMapping(
           profile.accountEmail,
-          window.id,
-          profile.windowName,
-          false
+          profile.windowName
         );
 
-        // Store profile data
+        // Store instance data
         await db.query(
-          `INSERT INTO bitbrowser_profiles (window_id, window_name, profile_data, is_active)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO browser_instances (window_id, profile_data, is_active)
+           VALUES ($1, $2, $3)
            ON CONFLICT (window_id) DO UPDATE SET
-             window_name = $2,
-             profile_data = $3,
-             updated_at = CURRENT_TIMESTAMP`,
+             profile_data = $2,
+             is_active = $3,
+             last_activity = CURRENT_TIMESTAMP`,
           [
             window.id,
-            profile.windowName,
             JSON.stringify({
               proxy: profile.proxy,
               userAgent: profile.userAgent,
-              metadata: profile.metadata
+              metadata: profile.metadata,
+              windowName: profile.windowName
             }),
             true
           ]

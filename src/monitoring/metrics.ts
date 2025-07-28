@@ -494,10 +494,18 @@ export class MetricsCollector extends EventEmitter {
   async recordMetric(metric: MetricValue): Promise<void> {
     try {
       await this.db.query(
-        `INSERT INTO custom_metrics (
-          name, value, timestamp, labels
-        ) VALUES ($1, $2, $3, $4)`,
-        [metric.name, metric.value, metric.timestamp, JSON.stringify(metric.labels || {})]
+        `INSERT INTO metrics_history (
+          timestamp, metric_type, metric_data
+        ) VALUES ($1, $2, $3)`,
+        [
+          metric.timestamp, 
+          'custom_metric',
+          JSON.stringify({
+            name: metric.name,
+            value: metric.value,
+            labels: metric.labels || {}
+          })
+        ]
       );
     } catch (error) {
       logger.error({ metric, error }, 'Failed to record custom metric');

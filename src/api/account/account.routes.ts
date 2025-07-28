@@ -78,6 +78,16 @@ export function createAccountRoutes(accountManager: AccountManager): Router {
     (req, res) => accountController.updateAccount(req, res)
   );
 
+  // Update an account (PATCH method)
+  router.patch(
+    '/:id',
+    validate({ 
+      params: z.object({ id: z.string().uuid() }),
+      body: updateAccountSchema 
+    }),
+    (req, res) => accountController.updateAccount(req, res)
+  );
+
   // Update account status
   router.patch(
     '/:id/status',

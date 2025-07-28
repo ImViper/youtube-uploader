@@ -1,0 +1,20 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+      "outDir": "../dist",
+      "skipLibCheck": true,
+      "noEmitOnError": false
+    },
+    "include": [
+      "../src/**/*"
+    ],
+    "exclude": [
+      "../node_modules",
+      "../dist",
+      "../src/__tests__/**/*",
+      "../src/**/*.test.ts",
+      "../src/**/*.spec.ts",
+      "../src/workers/upload-worker-new.ts",
+      "../src/workers/upload-worker.ts"
+    ]
+}

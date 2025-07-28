@@ -38,7 +38,7 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
   private db = getDatabase();
 
   constructor(config: UploadWorkerConfig) {
-    super('youtube:upload', async (job: Job<UploadJobData>) => {
+    super('youtube-uploads', async (job: Job<UploadJobData>) => {
       return this.processUpload(job);
     }, {
       connection: {
@@ -63,12 +63,68 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
   private async processUpload(job: Job<UploadJobData>): Promise<UploadJobResult> {
     const { taskId, accountId: requestedAccountId } = job.data;
     const startTime = Date.now();
+    
+    // Enhanced retry logic with account switching
+    let retryCount = 0;
+    const maxRetries = this.config.maxRetries || 3;
+    let lastError: Error | null = null;
+    let triedAccountIds: Set<string> = new Set();
+    
+    while (retryCount < maxRetries) {
+      try {
+        const result = await this.attemptUpload(job, requestedAccountId, triedAccountIds);
+        return result;
+      } catch (error) {
+        lastError = error as Error;
+        retryCount++;
+        
+        logger.warn({ 
+          jobId: job.id,
+          taskId,
+          attempt: retryCount,
+          maxRetries,
+          error: lastError.message 
+        }, 'Upload attempt failed, considering retry');
+        
+        // Check if we should retry with a different account
+        const shouldSwitchAccount = lastError.message.toLowerCase().includes('login') ||
+                                   lastError.message.toLowerCase().includes('authentication') ||
+                                   lastError.message.toLowerCase().includes('suspended');
+        
+        if (shouldSwitchAccount && retryCount < maxRetries) {
+          logger.info({ jobId: job.id }, 'Will retry with a different account');
+          await job.updateProgress({ 
+            status: 'switching_account', 
+            progress: 10 + (retryCount * 5) 
+          });
+          // Small delay before retry
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } else if (retryCount < maxRetries) {
+          // Regular retry with same account
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+    }
+    
+    // All retries exhausted
+    throw lastError || new Error('Upload failed after all retries');
+  }
+  
+  private async attemptUpload(
+    job: Job<UploadJobData>, 
+    requestedAccountId: string | undefined,
+    triedAccountIds: Set<string>
+  ): Promise<UploadJobResult> {
+    const { taskId } = job.data;
+    const startTime = Date.now();
 
     logger.info({ 
       jobId: job.id, 
       taskId, 
-      accountId: requestedAccountId 
-    }, 'Processing upload task');
+      requestedAccountId,
+      triedAccounts: Array.from(triedAccountIds),
+      attempt: triedAccountIds.size + 1
+    }, 'Processing upload attempt');
 
     let browserInstance: BrowserInstance | null = null;
     let accountProfile;
@@ -95,32 +151,58 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
       await job.updateProgress({ status: 'selecting_account', progress: 15 });
 
       // Get account (use requested account or find a healthy one)
-      if (requestedAccountId) {
+      if (requestedAccountId && !triedAccountIds.has(requestedAccountId)) {
         accountProfile = await this.config.accountManager.getAccount(requestedAccountId);
         if (!accountProfile) {
           throw new Error(`Account not found: ${requestedAccountId}`);
         }
       } else {
-        accountProfile = await this.config.accountManager.getHealthyAccount();
-        if (!accountProfile) {
-          throw new Error('No healthy accounts available');
+        // Find a healthy account that hasn't been tried yet
+        const allHealthyAccounts = await this.config.accountManager.getAllHealthyAccounts();
+        const untried = allHealthyAccounts.filter(acc => !triedAccountIds.has(acc.id));
+        
+        if (untried.length === 0) {
+          throw new Error('No more healthy accounts available to try');
         }
+        
+        accountProfile = untried[0];
+        logger.info({ 
+          accountId: accountProfile.id, 
+          email: accountProfile.email,
+          isRetry: triedAccountIds.size > 0 
+        }, 'Selected alternative account');
       }
+      
+      // Mark this account as tried
+      triedAccountIds.add(accountProfile.id);
 
       const accountId = accountProfile.id;
       logger.info({ accountId, email: accountProfile.email }, 'Account selected');
 
-      // Update task with assigned account
-      await this.db.query(
-        'UPDATE upload_tasks SET account_id = $1, started_at = CURRENT_TIMESTAMP WHERE id = $2',
-        [accountId, taskId]
-      );
+      // Update task with assigned account (with transaction)
+      await this.db.transaction(async (client) => {
+        // Verify task is still in pending state
+        const taskCheck = await client.query(
+          'SELECT status FROM upload_tasks WHERE id = $1 FOR UPDATE',
+          [taskId]
+        );
+        
+        if (taskCheck.rows[0]?.status !== 'pending') {
+          throw new Error(`Task ${taskId} is no longer pending (status: ${taskCheck.rows[0]?.status})`);
+        }
+        
+        // Update task
+        await client.query(
+          'UPDATE upload_tasks SET account_id = $1, status = $2, started_at = CURRENT_TIMESTAMP WHERE id = $3',
+          [accountId, 'active', taskId]
+        );
+      });
 
       // Update job progress
       await job.updateProgress({ status: 'acquiring_browser', progress: 20 });
 
       // Get browser window name from account
-      const windowName = accountProfile.bitbrowserWindowName;
+      const windowName = accountProfile.bitbrowser_window_name;
       if (!windowName) {
         throw new Error(`Account ${accountProfile.email} has no browser window assigned`);
       }
@@ -128,12 +210,33 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
       logger.info({ windowName, accountId }, 'Opening browser window');
 
       // Open browser by window name
-      browserInstance = await this.config.bitBrowserManager.openBrowserByName(windowName);
-      logger.info({ 
-        windowId: browserInstance.windowId,
-        windowName: browserInstance.windowName,
-        debugUrl: browserInstance.debugUrl
-      }, 'Browser instance acquired');
+      try {
+        browserInstance = await this.config.bitBrowserManager.openBrowserByName(windowName);
+        logger.info({ 
+          windowId: browserInstance.windowId,
+          windowName: browserInstance.windowName,
+          debugUrl: browserInstance.debugUrl
+        }, 'Browser instance acquired');
+      } catch (openError) {
+        const errorMessage = openError instanceof Error ? openError.message : String(openError);
+        logger.warn({ windowName, error: errorMessage }, 'Failed to open window by name, trying with profile_id');
+        
+        // Fallback: try to open by profile_id if available
+        if (accountProfile.browserProfileId) {
+          try {
+            browserInstance = await this.config.bitBrowserManager.openBrowser(accountProfile.browserProfileId);
+            logger.info({ 
+              windowId: browserInstance.windowId,
+              profileId: accountProfile.browserProfileId,
+              debugUrl: browserInstance.debugUrl
+            }, 'Browser instance acquired via profile_id fallback');
+          } catch (fallbackError) {
+            throw new Error(`Failed to open browser window: ${errorMessage} (fallback also failed)`);
+          }
+        } else {
+          throw new Error(`Failed to open browser window by name: ${errorMessage}`);
+        }
+      }
 
       // Connect to browser
       browser = browserInstance.browser;
@@ -144,10 +247,10 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
       // Update job progress
       await job.updateProgress({ status: 'uploading', progress: 30 });
 
-      // Create upload history record
+      // Create upload history record with proper defaults
       const historyResult = await this.db.query(
-        `INSERT INTO upload_history (task_id, account_id, started_at) 
-         VALUES ($1, $2, CURRENT_TIMESTAMP) 
+        `INSERT INTO upload_history (task_id, account_id, started_at, success) 
+         VALUES ($1, $2, CURRENT_TIMESTAMP, NULL) 
          RETURNING id`,
         [taskId, accountId]
       );
@@ -157,7 +260,7 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
       const mockCredentials = {
         email: accountProfile.email,
         pass: '',
-        recoveryemail: accountProfile.credentials.recoveryEmail
+        recoveryemail: accountProfile.credentials?.recoveryEmail || ''
       };
 
       // Execute upload with progress tracking
@@ -168,14 +271,19 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
           browser: browser,
           onProgress: (progress) => {
             if (typeof progress === 'number') {
+              const adjustedProgress = Math.floor(30 + (progress * 0.6)); // 30-90%
+              logger.info({ taskId, progress, adjustedProgress }, 'Upload progress update');
               job.updateProgress({ 
                 status: 'uploading', 
-                progress: 30 + (progress * 0.6) // 30-90%
+                progress: adjustedProgress
               });
+            } else if (progress && typeof progress === 'object') {
+              logger.info({ taskId, progress }, 'Upload progress object');
+              job.updateProgress(progress);
             }
           },
           onLog: (message) => {
-            logger.debug({ taskId, message }, 'Upload log');
+            logger.info({ taskId, message }, 'Upload log');
           }
         }
       );
@@ -185,10 +293,18 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
       });
 
       // Wait for upload or timeout
-      const uploadResults = await Promise.race([uploadPromise, timeoutPromise]) as string[];
+      let uploadResults;
+      try {
+        uploadResults = await Promise.race([uploadPromise, timeoutPromise]) as string[];
+      } catch (uploadError) {
+        logger.error({ taskId, error: uploadError }, 'Upload process error');
+        throw uploadError;
+      }
+      
       const videoLink = uploadResults?.[0];
 
       if (!videoLink) {
+        logger.error({ taskId, uploadResults }, 'Upload failed - no video link returned');
         throw new Error('Upload failed - no video link returned');
       }
 
@@ -230,12 +346,41 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
         jobId: job.id,
         taskId,
         error: errorMessage,
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
+        accountId: accountProfile?.id,
+        windowName: accountProfile?.bitbrowser_window_name
       }, 'Upload failed');
 
-      // Update account health if we have one
+      // Enhanced error handling
+      const isLoginError = errorMessage.toLowerCase().includes('login') || 
+                          errorMessage.toLowerCase().includes('sign in') ||
+                          errorMessage.toLowerCase().includes('authentication');
+      
+      const isAccountError = errorMessage.toLowerCase().includes('suspended') ||
+                            errorMessage.toLowerCase().includes('terminated') ||
+                            errorMessage.toLowerCase().includes('disabled');
+
+      // Update account health and status if we have one
       if (accountProfile) {
         await this.config.accountManager.updateAccountHealth(accountProfile.id, false);
+        
+        // Mark account as needs_attention for login errors or account issues
+        if (isLoginError || isAccountError) {
+          try {
+            await this.db.query(
+              `UPDATE accounts 
+               SET status = 'needs_attention',
+                   last_error = $1,
+                   error_count = COALESCE(error_count, 0) + 1,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2`,
+              [errorMessage, accountProfile.id]
+            );
+            logger.warn({ accountId: accountProfile.id }, 'Account marked as needs_attention');
+          } catch (updateError) {
+            logger.error({ error: updateError }, 'Failed to update account status');
+          }
+        }
       }
 
       // Update upload history if we have it
@@ -247,12 +392,31 @@ export class UploadWorkerV2 extends Worker<UploadJobData, UploadJobResult> {
         );
       }
 
+      // Rollback task status if upload failed after it was started
+      if (taskId && accountProfile) {
+        try {
+          await this.db.query(
+            `UPDATE upload_tasks 
+             SET status = 'pending',
+                 account_id = NULL,
+                 started_at = NULL,
+                 error = $1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2 AND status = 'active'`,
+            [errorMessage, taskId]
+          );
+          logger.info({ taskId }, 'Task status rolled back to pending');
+        } catch (rollbackError) {
+          logger.error({ error: rollbackError }, 'Failed to rollback task status');
+        }
+      }
+
       return {
         success: false,
         error: errorMessage,
         uploadDuration,
         accountId: accountProfile?.id,
-        windowName: accountProfile?.bitbrowserWindowName
+        windowName: accountProfile?.bitbrowser_window_name
       };
 
     } finally {

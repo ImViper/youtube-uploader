@@ -1,24 +1,31 @@
 {
-    "compilerOptions": {            
-      "target": "ES2017",                                
-      "module": "commonjs",                           
-      "lib": [
-        "DOM",
-        "ESNext",
-        "ESNext.Array",
-        "ESNext.AsyncIterable"
-      ],                                   
-      "declaration": true,                     
-      "declarationMap": true,                
-      "sourceMap": true,             
-      "outDir": "./dist",                        
-      "resolveJsonModule": true,
-      "strict": true,                           
-      "esModuleInterop": true,                  
-      "skipLibCheck": true,                     
-      "forceConsistentCasingInFileNames": true  
-    },
-    "include": [
-      "src/**/*"
-    ]
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "commonjs",
+    "lib": ["ES2017", "ES2021", "DOM"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "manual-tests",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts"
+  ]
 }

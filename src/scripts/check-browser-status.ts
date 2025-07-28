@@ -91,14 +91,14 @@ async function checkBrowserStatus() {
           
           status.isLoggedIn = isLoggedIn;
 
-          // Update account login status
+          // Log login status (no longer updating in DB)
           if (account) {
-            await accountManager.updateWindowLoginStatus(account.id, isLoggedIn);
+            logger.info({ accountId: account.id, isLoggedIn }, 'Account login status checked');
           }
 
           // Update profile in database
           await db.query(
-            `UPDATE bitbrowser_profiles 
+            `UPDATE browser_instances 
              SET is_logged_in = $1, last_health_check = CURRENT_TIMESTAMP
              WHERE window_id = $2`,
             [isLoggedIn, window.id]

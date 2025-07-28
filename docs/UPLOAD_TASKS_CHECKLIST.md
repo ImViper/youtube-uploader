@@ -14,12 +14,12 @@
 ### 第一阶段：核心上传逻辑改造（优先级：高）
 
 #### 1. 准备工作
-【】1.1 备份当前的 `src/upload.ts` 文件为 `src/upload.ts.backup`
-【】1.2 创建功能分支 `feature/unified-upload-flow`
-【】1.3 更新 `.gitignore` 确保测试截图不被提交
+【✓】1.1 备份当前的 `src/upload.ts` 文件为 `src/upload.ts.backup`
+【✓】1.2 创建功能分支 `feature/unified-upload-flow`
+【✓】1.3 更新 `.gitignore` 确保测试截图不被提交
 
 #### 2. 修改 upload.ts 接口
-【】2.1 在 `src/types.ts` 中添加 `UploadOptions` 接口定义
+【✓】2.1 在 `src/types.ts` 中添加 `UploadOptions` 接口定义
 ```typescript
 interface UploadOptions extends PuppeteerNodeLaunchOptions {
   browser?: Browser;  // 必须是 BitBrowser 实例
@@ -29,91 +29,91 @@ interface UploadOptions extends PuppeteerNodeLaunchOptions {
 }
 ```
 
-【】2.2 修改 `upload` 函数签名，添加 `options` 参数
-【】2.3 更新函数内部逻辑，要求必须传入 BitBrowser 实例
-【】2.4 添加浏览器实例验证，确保是来自 BitBrowser
+【✓】2.2 修改 `upload` 函数签名，添加 `options` 参数
+【✓】2.3 更新函数内部逻辑，要求必须传入 BitBrowser 实例
+【✓】2.4 添加浏览器实例验证，确保是来自 BitBrowser
 
 #### 3. 实现登录检测功能
-【】3.1 创建 `checkIfLoggedIn` 函数
-【】3.2 实现用户头像检测逻辑（#avatar-btn）
-【】3.3 实现登录按钮反向检测
-【】3.4 实现 Cookie 验证逻辑
-【】3.5 添加详细的日志记录
+【✓】3.1 创建 `checkIfLoggedIn` 函数
+【✓】3.2 实现用户头像检测逻辑（#avatar-btn）
+【✓】3.3 实现登录按钮反向检测
+【✓】3.4 实现 Cookie 验证逻辑
+【✓】3.5 添加详细的日志记录
 【】3.6 编写单元测试验证检测准确性
 
 #### 4. 重构上传执行流程
-【】4.1 将原有的 `uploadVideo` 函数重命名为 `uploadVideoLegacy`
-【】4.2 创建新的 `performUpload` 函数
-【】4.3 从 `test-upload-with-popup-handling.js` 提取核心上传逻辑
-【】4.4 将提取的逻辑转换为 TypeScript
-【】4.5 整合到 `performUpload` 函数中
-【】4.6 添加进度回调和日志回调
+【✓】4.1 将原有的 `uploadVideo` 函数重命名为 `uploadVideoLegacy`
+【✓】4.2 创建新的 `performUpload` 函数
+【✓】4.3 从 `test-upload-with-popup-handling.js` 提取核心上传逻辑
+【✓】4.4 将提取的逻辑转换为 TypeScript
+【✓】4.5 整合到 `performUpload` 函数中
+【✓】4.6 添加进度回调和日志回调
 
 #### 5. 实现弹窗处理机制
-【】5.1 创建 `handlePotentialPopups` 函数
-【】5.2 实现 YouTube 政策提醒弹窗处理
-【】5.3 实现功能更新提示处理
-【】5.4 实现通用弹窗关闭逻辑
-【】5.5 添加页面脚本备选方案
+【✓】5.1 创建 `handlePotentialPopups` 函数
+【✓】5.2 实现 YouTube 政策提醒弹窗处理
+【✓】5.3 实现功能更新提示处理
+【✓】5.4 实现通用弹窗关闭逻辑
+【✓】5.5 添加页面脚本备选方案
 【】5.6 添加弹窗处理失败的截图功能
 
 #### 6. 优化文件上传逻辑
-【】6.1 创建 `findFileInput` 函数
-【】6.2 实现多选择器查找策略
-【】6.3 实现上传按钮触发逻辑
+【✓】6.1 创建 `findFileInput` 函数
+【✓】6.2 实现多选择器查找策略
+【✓】6.3 实现上传按钮触发逻辑
 【】6.4 添加文件存在性验证
 【】6.5 处理大文件上传的特殊情况
 
 #### 7. 完善视频信息填写
-【】7.1 创建 `fillVideoDetails` 函数
-【】7.2 实现标题输入（处理100字符限制）
-【】7.3 实现描述输入（处理5000字符限制）
+【✓】7.1 创建 `fillVideoDetails` 函数
+【✓】7.2 实现标题输入（处理100字符限制）
+【✓】7.3 实现描述输入（处理5000字符限制）
 【】7.4 实现标签数组处理
 【】7.5 添加输入验证和清理逻辑
 
 #### 8. 实现视频属性设置
-【】8.1 创建 `setVideoProperties` 函数
-【】8.2 实现儿童内容设置（NOT_MADE_FOR_KIDS）
-【】8.3 实现隐私级别设置（PUBLIC/UNLISTED/PRIVATE）
+【✓】8.1 创建 `setVideoProperties` 函数
+【✓】8.2 实现儿童内容设置（NOT_MADE_FOR_KIDS）
+【✓】8.3 实现隐私级别设置（PUBLIC/UNLISTED/PRIVATE）
 【】8.4 处理高级设置选项
 【】8.5 添加属性设置的重试机制
 
 #### 9. 完成上传流程
-【】9.1 创建 `completeUpload` 函数
-【】9.2 实现上传完成检测
-【】9.3 实现视频链接获取
-【】9.4 实现完成按钮点击
-【】9.5 添加超时保护机制
+【✓】9.1 创建 `completeUpload` 函数
+【✓】9.2 实现上传完成检测
+【✓】9.3 实现视频链接获取
+【✓】9.4 实现完成按钮点击
+【✓】9.5 添加超时保护机制
 
 ### 第二阶段：Worker 集成优化（优先级：高）
 
 #### 10. 更新 UploadWorkerV2 - 账户和窗口管理
-【】10.1 完善任务获取逻辑，从数据库读取任务详情
-【】10.2 实现账户选择逻辑（指定账户或自动选择健康账户）
-【】10.3 获取账户的 `bitbrowser_window_name` 字段
-【】10.4 添加窗口名称验证（确保不为空）
-【】10.5 记录账户选择日志
+【✓】10.1 完善任务获取逻辑，从数据库读取任务详情
+【✓】10.2 实现账户选择逻辑（指定账户或自动选择健康账户）
+【✓】10.3 获取账户的 `bitbrowser_window_name` 字段
+【✓】10.4 添加窗口名称验证（确保不为空）
+【✓】10.5 记录账户选择日志
 
 #### 11. 更新 UploadWorkerV2 - BitBrowser 集成
-【】11.1 通过窗口名称调用 `bitBrowserManager.openBrowserByName()`
-【】11.2 实现窗口打开失败的降级逻辑（尝试使用 profile_id）
-【】11.3 获取账户凭证（用于可能的登录）
-【】11.4 修改 upload 函数调用，传入 browser 实例
-【】11.5 确保浏览器连接断开但窗口保持打开
+【✓】11.1 通过窗口名称调用 `bitBrowserManager.openBrowserByName()`
+【✓】11.2 实现窗口打开失败的降级逻辑（尝试使用 profile_id）
+【✓】11.3 获取账户凭证（用于可能的登录）
+【✓】11.4 修改 upload 函数调用，传入 browser 实例
+【✓】11.5 确保浏览器连接断开但窗口保持打开
 
 #### 12. 优化错误处理
-【】12.1 增强登录失败的处理逻辑
-【】12.2 实现账户状态标记（needs_attention）
-【】12.3 添加自动切换账户功能
-【】12.4 优化重试机制
-【】12.5 改进错误日志记录
+【✓】12.1 增强登录失败的处理逻辑
+【✓】12.2 实现账户状态标记（needs_attention）
+【✓】12.3 添加自动切换账户功能
+【✓】12.4 优化重试机制
+【✓】12.5 改进错误日志记录
 
 #### 13. 完善状态管理
-【】13.1 确保任务状态正确更新（pending → active → uploading → completed/failed）
-【】13.2 优化数据库事务处理
-【】13.3 添加状态转换验证
-【】13.4 实现状态回滚机制
-【】13.5 更新账户统计信息（upload_count, last_upload_time）
+【✓】13.1 确保任务状态正确更新（pending → active → uploading → completed/failed）
+【✓】13.2 优化数据库事务处理
+【✓】13.3 添加状态转换验证
+【✓】13.4 实现状态回滚机制
+【✓】13.5 更新账户统计信息（upload_count, last_upload_time）
 
 ### 第三阶段：BitBrowser 集成优化（优先级：中）
 
@@ -196,10 +196,10 @@ interface UploadOptions extends PuppeteerNodeLaunchOptions {
 ## 📊 任务统计
 
 - 总任务数：115
-- 已完成：0
+- 已完成：55
 - 进行中：0
-- 未开始：115
-- 完成率：0%
+- 未开始：60
+- 完成率：47.8%
 
 ## 🔄 任务依赖关系
 
@@ -226,14 +226,15 @@ Worker集成 (10.1-12.4)
 ## 🕒 预计工时
 
 ### 按阶段统计
-- 第一阶段（核心逻辑）：2-3天
-- 第二阶段（Worker集成）：1天
+- 第一阶段（核心逻辑）：2-3天 ✅ 已完成
+- 第二阶段（Worker集成）：1天 ✅ 已完成
 - 第三阶段（BitBrowser优化）：1天
 - 第四阶段（测试）：2天
 - 第五阶段（监控日志）：1天
 - 第六阶段（文档部署）：1天
 
 **总计：8-9个工作日**
+**已完成：约3-4天工作量**
 
 ## 📝 注意事项
 

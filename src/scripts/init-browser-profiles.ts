@@ -72,9 +72,7 @@ async function initializeBrowserProfiles() {
       logger.info({ email: profile.accountEmail, windowId: window.id }, 'Updating window mapping');
       await accountManager.updateAccountBrowserMapping(
         profile.accountEmail,
-        window.id,
-        profile.windowName,
-        false // Will be updated after login check
+        profile.windowName
       );
 
       // Check if window is logged in
@@ -82,8 +80,8 @@ async function initializeBrowserProfiles() {
       const browserInstance = await bitBrowserManager.getOrCreatePersistentBrowser(profile.windowName);
       const isLoggedIn = await bitBrowserManager.checkYouTubeLogin(browserInstance.id);
 
-      // Update login status
-      await accountManager.updateWindowLoginStatus(account.id, isLoggedIn);
+      // Log login status (no longer updating in DB)
+      logger.info({ accountId: account.id, isLoggedIn }, 'Window login status checked');
       
       logger.info({
         email: profile.accountEmail,
@@ -92,19 +90,19 @@ async function initializeBrowserProfiles() {
         isLoggedIn
       }, 'Profile initialized');
 
-      // Store profile data in database
+      // Store instance data in database
       await db.query(
-        `INSERT INTO bitbrowser_profiles (window_id, window_name, profile_data, is_logged_in, is_active)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO browser_instances (window_id, profile_data, is_logged_in, is_active)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (window_id) DO UPDATE SET
-           window_name = $2,
-           profile_data = $3,
-           is_logged_in = $4,
+           profile_data = $2,
+           is_logged_in = $3,
+           is_active = $4,
            last_health_check = CURRENT_TIMESTAMP`,
         [
           window.id,
-          profile.windowName,
           JSON.stringify({
+            windowName: profile.windowName,
             proxy: profile.proxy,
             userAgent: profile.userAgent,
             metadata: profile.metadata
@@ -122,9 +120,7 @@ async function initializeBrowserProfiles() {
     for (const mapping of mappings) {
       logger.info({
         email: mapping.email,
-        windowName: mapping.bitbrowserWindowName,
-        windowId: mapping.bitbrowserWindowId,
-        isLoggedIn: mapping.isWindowLoggedIn,
+        windowName: mapping.bitbrowser_window_name,
         accountStatus: mapping.status,
         healthScore: mapping.healthScore
       }, 'Account mapping');

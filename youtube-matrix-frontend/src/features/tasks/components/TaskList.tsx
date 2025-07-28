@@ -66,6 +66,11 @@ const TaskList: React.FC<TaskListProps> = ({
     };
 
     const config = statusConfig[status];
+    if (!config) {
+      // 处理未知状态
+      return <Tag color="default">{status || '未知'}</Tag>;
+    }
+    
     return (
       <Tag color={config.color} icon={config.icon}>
         {config.text}
@@ -82,6 +87,11 @@ const TaskList: React.FC<TaskListProps> = ({
     };
 
     const config = typeConfig[type];
+    if (!config) {
+      // 处理未知类型
+      return <Tag color="default">{type || '未知'}</Tag>;
+    }
+    
     return <Tag color={config.color}>{config.text}</Tag>;
   };
 
@@ -94,6 +104,11 @@ const TaskList: React.FC<TaskListProps> = ({
     };
 
     const config = priorityConfig[priority];
+    if (!config) {
+      // 处理未知优先级
+      return <Badge status="default" text={priority || '未知'} />;
+    }
+    
     return <Badge status={config.status} text={config.text} />;
   };
 
